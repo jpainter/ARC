@@ -91,6 +91,10 @@ for (year in 2005:2014){
 
 head(total_rainfall)
 save(total_rainfall, file = 'total_rainfall.rda')
+
+# CHART 
+
+
 load('total_rainfall.rda')
 
 #    ggplot( data = total_rainfall, aes(color = year, y = rain, x = month)) +

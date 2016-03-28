@@ -210,8 +210,61 @@ monthly_arc_data = function( year, month){
      save( arc_period, file = paste0( folder_name, "/", period_file_name) )
 }
 
-# get all months of year...
-for (year in 2009:2013){
+# function to download all data files in a month
+download_arc_data = function( year, month){
+   folder_name = paste0("shapefiles/", year, month)
+   start_date = paste0(year, month, "01")
+   month_days = monthDays(ymd(start_date))
+   end_date = paste0(year, month, month_days)
+   month_interval = new_interval(ymd(start_date), ymd(end_date))
+   days_in_interval = file_dates %within% month_interval
+   table( days_in_interval )
+   files_in_interval = filenames[days_in_interval]
+   num_files = length(files_in_interval)
+        
+   # download daily files  
+     for (i in 1:num_files){
+         cat( paste(i, files_in_interval[i]), sep = "\n") ;flush.console()
+          
+          if (!dir.exists(folder_name)) dir.create(folder_name) 
+          if (file.exists( paste0(folder_name, "/",
+                                  unlist(strsplit(files_in_interval[i], ".zip" )) )
+                           )) {
+             next
+          }
+          zip_file = paste0(folder_name, "/arc.zip")
+          con <- file(zip_file, open = "wb")
+          
+          cat(" downloading file...\n") ;flush.console()
+          
+          repeat{
+             success = TRUE
+             bin <- tryCatch(
+                {
+                getBinaryURL(paste0(url, files_in_interval[i]), ssl.verifypeer=FALSE)
+                },
+             
+             error = function(cond){
+                success = FALSE
+                print("download error")
+                return(success)
+             }
+             )
+            if (success == TRUE)   break
+          }
+          
+          cat("  writing file...\n") ;flush.console()
+          writeBin(bin, con)
+          close(con)
+          
+          cat("   unzipping file...\n") ;flush.console()
+          unzip(zip_file, exdir = folder_name)
+          cat("done \n \n") ;flush.console()
+     }
+}
+
+# get all months from 2009 (first year available) up to most recent...
+for (year in 2009:year(now())){
    year = as.character(year)
    for (i in 1:12){
       month = c("01","02","03","04","05","06","07","08","09","10","11","12")

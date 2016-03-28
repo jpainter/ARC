@@ -111,12 +111,13 @@ file_dates = unlist(round_date(ymd(sapply(file_list, "[[", 2))))
 
 # monthly rain totals ####
 
-monthly_arc_data = function( year, month){
+# Download daily files and create monthly summary ####
+monthly_arc_geotiff_data = function( year, month){
    folder_name = paste0("data/", year, month)
    start_date = paste0(year, month, "01")
    month_days = monthDays(ymd(start_date))
    end_date = paste0(year, month, month_days)
-   month_interval = new_interval(ymd(start_date), ymd(end_date))
+   month_interval = interval(ymd(start_date), ymd(end_date))
    days_in_interval = file_dates %within% month_interval
    table( days_in_interval )
    files_in_interval = filenames[days_in_interval]
@@ -124,13 +125,15 @@ monthly_arc_data = function( year, month){
         
    # download daily files  
      for (i in 1:num_files){
+        
          cat( paste(i, files_in_interval[i]), sep = "\n") ;flush.console()
           
           if (!dir.exists(folder_name)) dir.create(folder_name) 
           if (file.exists( paste0(folder_name, "/",
                                   unlist(strsplit(files_in_interval[i], ".zip" )) )
                            )) {
-             next
+             next # do not redownload
+        
           }
           zip_file = paste0(folder_name, "/arc.zip")
           con <- file(zip_file, open = "wb")
@@ -186,31 +189,131 @@ monthly_arc_data = function( year, month){
 # test
 # monthly_arc_data("2014", "05")
 
+download_arc_geotiff_data = function( year, month){
+   folder_name = paste0("data/", year, month)
+   start_date = paste0(year, month, "01")
+   month_days = monthDays(ymd(start_date))
+   end_date = paste0(year, month, month_days)
+   month_interval = interval(ymd(start_date), ymd(end_date))
+   days_in_interval = file_dates %within% month_interval
+   table( days_in_interval )
+   files_in_interval = filenames[days_in_interval]
+   num_files = length(files_in_interval)
+        
+   # download daily files  
+     for (i in 1:num_files){
+        
+         cat( paste(i, files_in_interval[i]), sep = "\n") ;flush.console()
+          
+          if (!dir.exists(folder_name)) dir.create(folder_name) 
+          if (file.exists( paste0(folder_name, "/",
+                                  unlist(strsplit(files_in_interval[i], ".zip" )) )
+                           )) {
+             next # do not redownload
+        
+          }
+          zip_file = paste0(folder_name, "/arc.zip")
+          con <- file(zip_file, open = "wb")
+          
+          cat(" downloading file...\n") ;flush.console()
+          
+          repeat{
+             success = TRUE
+             bin <- tryCatch(
+                {
+                getBinaryURL(paste0(url, files_in_interval[i]), ssl.verifypeer=FALSE)
+                },
+             
+             error = function(cond){
+                success = FALSE
+                print("download error")
+                return(success)
+             }
+             )
+            if (success == TRUE)   break
+          }
+          
+          cat("  writing file...\n") ;flush.console()
+          writeBin(bin, con)
+          close(con)
+          
+          cat("   unzipping file...\n") ;flush.console()
+          unzip(zip_file, exdir = folder_name)
+          cat("done \n \n") ;flush.console()
+     }
+}
 
-# get all months of year...
-for (year in c(2005,2011)){
+monthly_arc_geotiff = function( year, month){
+   folder_name = paste0("data/", year, month)
+   start_date = paste0(year, month, "01")
+   month_days = monthDays(ymd(start_date))
+   end_date = paste0(year, month, month_days)
+   month_interval = interval(ymd(start_date), ymd(end_date))
+   days_in_interval = file_dates %within% month_interval
+   table( days_in_interval )[2]
+   files_in_interval = filenames[days_in_interval]
+   num_files = length(files_in_interval)
+        
+    # combine daily files
+     rain_total = numeric(601551)
+     for (i in 1:num_files){  
+          arc_file = paste0(folder_name, "/",
+                                  unlist(strsplit(files_in_interval[i], ".zip" )) )
+          cat( arc_file ) 
+          
+         arc = try(
+                readGDAL(arc_file, silent = TRUE)
+                ) 
+         
+          if ( class(arc) == "try-error" ){
+             cat("file not found, or something...\n" )
+             next
+          }
+          rain = arc@data$band1
+          cat(summary(rain)); cat("\n")
+          rain_total = rain_total + rain
+     }
+     
+     cat( "MONTHLY TOTAL",  summary(rain_total) )
+     arc_period = arc
+     arc_period@data$band1 = rain_total
+     
+     # write summary to file
+     period_file_name = paste0("africa_arc", year, month)
+     save( arc_period, file = paste0( folder_name, "/", period_file_name) )
+}
+
+# get all months of year...(2000 to mid-2015 already downloaded)
+for (year in 2000:year(now())){
    year = as.character(year)
    for (i in 1:12){
       month = c("01","02","03","04","05","06","07","08","09","10","11","12")
       cat( month[i], year, "\n")
-      monthly_arc_data(year, month[i])
+      download_arc_geotiff_data(year, month[i])
    }
 }
 
-#      period_file = paste0("africa_arc", year, month, ".tif")
-#      con <- file(period_file, open = "wb")
-#      writeBin(period_file, con)
-#       close(con)
-     
-#      arc_week_image = image(arc_week)  # looks like red box with yellow lines--not good!
-#      plot(bounds, add = TRUE)
+# make monthly summary file
+for ( year in 2001:2004 ){
+   year = as.character(year)
+   for (i in 1:12){
+      month = c("01","02","03","04","05","06","07","08","09","10","11","12")
+      cat( month[i], year, "\n")
+      monthly_arc_geotiff(year, month[i])
+   }
+}
+
+
+
 
 # load data ####
 year = "2014"
 month = "05"
+folder_name = paste0("data/", year, month)
 period_file_name = paste0("africa_arc", year, month)
+file = paste0( folder_name, "/", period_file_name)
 # assign(period_file_name, local(get(load(period_file_name))) )
-arc_period = local(get(load(period_file_name))) 
+arc_period = local(get(load(file))) 
 
 # plot as spatial lines  (base R)     ####    
 ac = as.image.SpatialGridDataFrame(arc_period)
@@ -225,10 +328,14 @@ plot(SLDF, col = terrain.colors(8))
 plot(world, add = TRUE)    # TODO: not working with rworldmaps      
 
 # plot as spatial points  (ggplot)   SLOW!   ####     
-ac = as.image.SpatialGridDataFrame(arc_week)
-acw = as.ppp.SpatialPoints(arc_week) %>% as.data.frame() %>% mutate(z = as.numeric(ac$z))
-x = fortify(acw)
-ggplot() + geom_point( data=acw, aes( x=x, y=y, color=z) ) # SLOW!   
+# ac.grid = as.image.SpatialGridDataFrame(arc_period) 
+ac.points = as.ppp.SpatialPoints(arc_period) %>% as.data.frame() %>% 
+   mutate(z = as.numeric(arc_period@data$band1))
+plot(ac.points)
+
+# filter to smaller region
+acp = ac.points %>% filter( findInterval(x, 17:18) == 1, findInterval(y, 0:1) == 1 )
+ggplot() + geom_point( data=acp, aes( x=x, y=y, color=z) ) # SLOW!
 
 # ggplot spatialGridDataFrame as tiles ####
  # from https://rpubs.com/tmieno2/68747:
@@ -251,92 +358,61 @@ sgdf_transform = function(sgdf){
   return(data)
 }
 
-arc_df = sgdf_transform(arc_period)
-
-# assign levels to data ####
-arc_df$z = cut(arc_df$layer, 
-                        breaks = c(0,50,100,200, 400, Inf), 
-                        include.lowest = TRUE)
-
-ggplot() + geom_tile(data= arc_df, aes(x, y, fill=z)) +
-   theme(
-        legend.position = 'bottom',
-        legend.key.size = unit(1, "cm")
-        )
-
-# # using grid2Polygons package is too slow 
-# install.packages("Grid2Polygons")
-# library(Grid2Polygons)
-
-
-# ac = as.image.SpatialGridDataFrame(arc_data)
-
-# assign levels to data ####
-arc_period@data$z = cut(arc_period@data$band1, 
-                        breaks = c(0,50,100,200, 400, Inf), 
-                        include.lowest = TRUE)
-
-# convert grid to polygons
-acw = arc_period %>%
-   # spTransform(CRS("+proj=wintri")) %>%
-   fortify()
-#    as.ppp.SpatialPoints() %>% 
-   # as.data.frame() 
-
-# assign levels to data
-acw$z = cut(acw$band1, breaks = c(0,50,100,200, 400, Inf), include.lowest = TRUE)
-table(acw$z, useNA = "always")
-
-# quick version
-ggplot() + 
-   geom_tile( data = acw, aes( x= x, y= y, fill = z)) +
-   scale_fill_brewer() +
-   geom_path(data = atlas, aes( x=long, y=lat, group = group))
-
-# complete version
-gg <- ggplot() + 
-   geom_map(data=atlas, map=atlas,
-                    aes(x=long, y=lat, map_id=id),
-                    color="black", fill="grey", alpha = .75, size=0.25) +
-   
-   geom_map(data = pmi_world, map = pmi_world,
-                    aes(x=long, y=lat, map_id=id),
-                    color="black", fill="white", alpha = 1 , size=0.25) + 
-   
-   geom_text(data = centroids, 
-                    aes(x=x, y=y, label = abrev),
-                    color="black", size= 2) + 
-   
-   coord_equal() + 
-   scale_x_continuous(expand=c(0,0)) + 
-   scale_y_continuous(expand=c(0,0)) +
-   theme_map() +
-   theme(
-      legend.position = c(0,0),
-      legend.background = element_rect(fill=alpha('white', 0))
+arc_df = sgdf_transform(arc_period) %>%
+   # assign levels to data ####
+   mutate(
+      z = cut(layer, 
+              breaks = c(10, 50, 100, 200, 400, Inf), 
+              include.lowest = FALSE) 
    ) 
 
-gg + 
-   xlim(-20, 55) +
-   ylim(-40, 40) 
+   # for speed, select area... (roughly DRC)
+   # filter( findInterval( x, c(15,30) ) == 1, findInterval( y, c(-10, 0) ) == 1 ) 
+   
+# quick version
+   ggplot() + 
+      geom_raster( data = arc_df, aes( x= x, y= y, fill = z)) +
+      scale_fill_brewer() +
+      geom_path(data = atlas, aes( x=long, y=lat, group = group)) +
+      xlim(-20, 55) + ylim(-40, 40) 
 
-# see color ramp
-# colorRampPalette(brewer.pal(9,"Blues"))(6)
+# complete version
+   gg <- ggplot() + 
+      # base map: atlas
+      geom_map(data=atlas, map=atlas,
+                       aes(x=long, y=lat, map_id=id),
+                       color="grey", fill="grey", alpha = .75, size=0.25) +
+      
+      geom_map(data = pmi_world, map = pmi_world,
+                       aes(x=long, y=lat, map_id=id),
+                       color="black", fill="white", alpha = 1 , size=0.25) + 
+      
+      geom_text(data = centroids, 
+                       aes(x=x, y=y, label = abrev),
+                       color="black", size= 2) + 
+      # rainfall
+      geom_raster( data = arc_df, aes( x= x, y= y, fill = z), alpha = 0.5) +
+      # scale_fill_brewer() +
+      scale_fill_manual(name = "Rainfall (mm)", 
+                     values = c("#e0f3f8", "#ffffbf", "#b8e186", "#4dac26", "#008837")) + 
+         # see color ramp
+         # colorRampPalette(brewer.pal(9,"Blues"))(6)
 
-gg +    
-   # geom_tile(data= arc_df, aes(x, y, fill=z), alpha = .75) +
-   scale_fill_manual(name = "Rainfall (mm)", 
-                     values = c(NA, "#CFE1F2", "#93C4DE", "#4A97C9", "#1664AB", "#08306B")) + 
-   theme(
-        legend.position = c(0,0),
-        legend.key.size = unit(1, "cm")
-        )+ 
-   xlim(min(arc_df$x), max(arc_df$x)) +
-   ylim(min(arc_df$y), max(arc_df$y)) +
-   coord_equal()
- 
+      # theme
+      coord_equal() + 
+      theme_map() +
+      # xlim(min(arc_df$x), max(arc_df$x)) +
+      # ylim(min(arc_df$y), max(arc_df$y)) +
+      theme(
+         legend.key.size = unit(1, "cm"),
+         legend.position = c(0,0),
+         legend.background = element_rect(fill=alpha('white', 0))
+      ) 
+   
+   gg + xlim(-20, 55) + ylim(-40, 40) 
+   
 
-# LOAD and PLOT ####
+# FUNCTION for LOAD and PLOT ####
 
 plot_arc=  function( year = "2014", month = "06"){
    

@@ -1,0 +1,20 @@
+TODO
+
+X - add 2016 data, make sure sliders adjust 
+- full description for measurement list
+- title in graph 
+- re word 'view annual'
+- hide month slide when annualview selected
+X - histogram y axis label:  MEAN rain
+X - more categories for change
+X - 500% should be 400%
+X - hover not working
+X - NAs srewing up fill/legend
+- if change is zero, show as 100%..
+- titles on map and histograms
+- desert, rain forest, etc. classification
+- either remove hover for histograms, or make it useful
+
+X - for "view yearly", recaclculate averages by first summing the total rain and total n
+
+- correlation with parasitemia

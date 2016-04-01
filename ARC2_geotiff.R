@@ -20,6 +20,161 @@ library(dplyr)
 library(rworldmap) # this pkg has waaaay better world shapefiles
 library(ggthemes)
 
+# download from ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/ ####
+
+   library(RCurl)
+   url <- "ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/"
+   filenames <- getURL(url, ftp.use.epsv = FALSE,dirlistonly = TRUE) 
+   filenames = unlist(strsplit(filenames, "\n" ))
+   file_list = strsplit(filenames, "[.]")
+   library(lubridate) # extract date
+   file_dates = unlist(round_date(ymd(sapply(file_list, "[[", 2))))
+
+# download and aggregate functions
+   download_arc_geotiff_data = function( year, month){
+      folder_name = paste0("data/", year, month)
+      start_date = paste0(year, month, "01")
+      month_days = monthDays(ymd(start_date))
+      end_date = paste0(year, month, month_days)
+      month_interval = interval(ymd(start_date), ymd(end_date))
+      days_in_interval = file_dates %within% month_interval
+      table( days_in_interval )
+      files_in_interval = filenames[days_in_interval]
+      num_files = length(files_in_interval)
+           
+      # download daily files  
+        for (i in 1:num_files){
+           
+            cat( paste(i, files_in_interval[i]), sep = "\n") ;flush.console()
+             
+             if (!dir.exists(folder_name)) dir.create(folder_name) 
+             if (file.exists( paste0(folder_name, "/",
+                                     unlist(strsplit(files_in_interval[i], ".zip" )) )
+                              )) {
+                next # do not redownload
+           
+             }
+             zip_file = paste0(folder_name, "/arc.zip")
+             con <- file(zip_file, open = "wb")
+             
+             cat(" downloading file...\n") ;flush.console()
+             
+             repeat{
+                success = TRUE
+                bin <- tryCatch(
+                   {
+                   getBinaryURL(paste0(url, files_in_interval[i]), ssl.verifypeer=FALSE)
+                   },
+                
+                error = function(cond){
+                   success = FALSE
+                   print("download error")
+                   return(success)
+                }
+                )
+               if (success == TRUE)   break
+             }
+             
+             cat("  writing file...\n") ;flush.console()
+             writeBin(bin, con)
+             close(con)
+             
+             cat("   unzipping file...\n") ;flush.console()
+             unzip(zip_file, exdir = folder_name)
+             cat("done \n \n") ;flush.console()
+        }
+   }
+   
+   monthly_arc_geotiff = function( year, month){
+      folder_name = paste0("data/", year, month)
+      start_date = paste0(year, month, "01")
+      month_days = monthDays(ymd(start_date))
+      end_date = paste0(year, month, month_days)
+      month_interval = interval(ymd(start_date), ymd(end_date))
+      days_in_interval = file_dates %within% month_interval
+      table( days_in_interval )[2]
+      files_in_interval = filenames[days_in_interval]
+      num_files = length(files_in_interval)
+           
+       # combine daily files
+        rain_total = numeric(601551)
+        for (i in 1:num_files){  
+             arc_file = paste0(folder_name, "/",
+                                     unlist(strsplit(files_in_interval[i], ".zip" )) )
+             cat( arc_file ) 
+             
+            arc = try(
+                   readGDAL(arc_file, silent = TRUE)
+                   ) 
+            
+             if ( class(arc) == "try-error" ){
+                cat("file not found, or something...\n" )
+                next
+             }
+             rain = arc@data$band1
+             cat(summary(rain)); cat("\n")
+             rain_total = rain_total + rain
+        }
+        
+        cat( "MONTHLY TOTAL",  summary(rain_total) )
+        arc_period = arc
+        arc_period@data$band1 = rain_total # this gives monthly total; daily is (rain_total/num_files)
+        
+        # write summary to file
+        period_file_name = paste0("africa_arc", year, month)
+        save( arc_period, file = paste0( folder_name, "/", period_file_name) )
+   }
+
+# test
+# monthly_arc_data("2014", "05")
+
+# Update...(2000 to mid-2015 already downloaded) ####
+
+# Get year/last month with data...
+   last_month_with_data = 3
+# Get most recent month...
+   most_recent_month = month( now() ) -1
+   
+for (year in year(now()) ){
+   
+   year = as.character(year)
+   
+   # for (i in 1:12){
+   for (i in last_month_with_data:most_recent_month){
+      month = c("01","02","03","04","05","06","07","08","09","10","11","12")
+      cat( month[i], year, "\n")
+      
+      download_arc_geotiff_data(year, month[i])
+      
+      monthly_arc_geotiff(year, month[i])
+   }
+}
+
+   
+# if data alredy downloaded, but not aggregated, make monthly summary file
+for ( year in 2001:2004 ){
+   year = as.character(year)
+   for (i in 1:12){
+      month = c("01","02","03","04","05","06","07","08","09","10","11","12")
+      cat( month[i], year, "\n")
+      monthly_arc_geotiff(year, month[i])
+   }
+}
+
+# AFter downloading and aggregating, need to create summary file with country adm2: ####
+# RUN ARC_total_rainfall_adm2.R
+
+
+# load data ####
+year = "2014"
+month = "05"
+folder_name = paste0("data/", year, month)
+period_file_name = paste0("africa_arc", year, month)
+file = paste0( folder_name, "/", period_file_name)
+# assign(period_file_name, local(get(load(period_file_name))) )
+arc_period = local(get(load(file))) 
+
+
 # country boundaries ####
 # bounds <- readOGR(dsn="../TM_WORLD_BORDERS-0.3", 
 #                   layer= "TM_WORLD_BORDERS-0.3") #import borders
@@ -56,264 +211,6 @@ pmi_world =  atlas %>% filter(id %in% pmi) %>%
 # add country abbreviation to centroids data frame
 centroids =  centroids %>% 
    mutate( abrev = pmi_abrev[match(country, pmi)] )
-
-# download from ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/ ####
-
-library(RCurl)
-url <- "ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/"
-filenames <- getURL(url, ftp.use.epsv = FALSE,dirlistonly = TRUE) 
-filenames = unlist(strsplit(filenames, "\n" ))
-file_list = strsplit(filenames, "[.]")
-library(lubridate) # extract date
-file_dates = unlist(round_date(ymd(sapply(file_list, "[[", 2))))
-
-# most recent ####
-#      most.recent <- filenames[length(filenames)]
-#      bin <- getBinaryURL(paste0(url, most.recent), ssl.verifypeer=FALSE)
-#      zip_file = "arc.zip"
-#      con <- file(zip_file, open = "wb")
-#      writeBin(bin, con)
-#      close(con)
-#      unzip(zip_file)
-#      arc_file = strsplit(most.recent, ".zip")[[1]]
-
-# last week ####
-#      num_files = length(filenames)
-#      last.week <- filenames[ (num_files-6):num_files ]
-#      
-#      for (i in 1:7){
-#           # TODO add progress bar and/or print i
-#           zip_file = "arc.zip"
-#           con <- file(zip_file, open = "wb")
-#           bin <- getBinaryURL(paste0(url, last.week[i]), ssl.verifypeer=FALSE)
-#           writeBin(bin, con)
-#           close(con)
-#           unzip(zip_file)
-#      }
-   
-
-# weekly rain totals ####
-#      rain_total = numeric(601551)
-#      
-#      for (i in 1:7){  
-#           arc_file = strsplit(last.week[i], ".zip")[[1]] 
-#           arc = readGDAL(arc_file, silent = TRUE)
-#           rain = arc@data$band1
-#           print(summary(rain))
-#           rain_total = rain_total + rain
-#      }
-#      
-#      summary(rain_total)
-#      arc_week = arc
-#      arc_week@data$band1 = rain_total
-#      arc_week_image = image(arc_week)  # looks like red box with yellow lines--not good!
-#      plot(bounds, add = TRUE)
-
-# monthly rain totals ####
-
-# Download daily files and create monthly summary ####
-monthly_arc_geotiff_data = function( year, month){
-   folder_name = paste0("data/", year, month)
-   start_date = paste0(year, month, "01")
-   month_days = monthDays(ymd(start_date))
-   end_date = paste0(year, month, month_days)
-   month_interval = interval(ymd(start_date), ymd(end_date))
-   days_in_interval = file_dates %within% month_interval
-   table( days_in_interval )
-   files_in_interval = filenames[days_in_interval]
-   num_files = length(files_in_interval)
-        
-   # download daily files  
-     for (i in 1:num_files){
-        
-         cat( paste(i, files_in_interval[i]), sep = "\n") ;flush.console()
-          
-          if (!dir.exists(folder_name)) dir.create(folder_name) 
-          if (file.exists( paste0(folder_name, "/",
-                                  unlist(strsplit(files_in_interval[i], ".zip" )) )
-                           )) {
-             next # do not redownload
-        
-          }
-          zip_file = paste0(folder_name, "/arc.zip")
-          con <- file(zip_file, open = "wb")
-          
-          cat(" downloading file...\n") ;flush.console()
-          
-          repeat{
-             success = TRUE
-             bin <- tryCatch(
-                {
-                getBinaryURL(paste0(url, files_in_interval[i]), ssl.verifypeer=FALSE)
-                },
-             
-             error = function(cond){
-                success = FALSE
-                print("download error")
-                return(success)
-             }
-             )
-            if (success == TRUE)   break
-          }
-          
-          cat("  writing file...\n") ;flush.console()
-          writeBin(bin, con)
-          close(con)
-          
-          cat("   unzipping file...\n") ;flush.console()
-          unzip(zip_file, exdir = folder_name)
-          cat("done \n \n") ;flush.console()
-     }
-     
-    # combine daily files
-     rain_total = numeric(601551)
-     for (i in 1:num_files){  
-         cat( paste(i, files_in_interval[i]), sep = "\n") 
-          arc_file = paste0(folder_name, "/",
-                                  unlist(strsplit(files_in_interval[i], ".zip" )) )
-          arc = readGDAL(arc_file, silent = TRUE)
-          rain = arc@data$band1
-          cat(summary(rain)); cat("\n")
-          rain_total = rain_total + rain
-     }
-     
-     cat(summary(rain_total))
-     arc_period = arc
-     arc_period@data$band1 = rain_total
-     
-     # write summary to file
-     period_file_name = paste0("africa_arc", year, month)
-     save( arc_period, file = paste0( folder_name, "/", period_file_name) )
-}
-
-# test
-# monthly_arc_data("2014", "05")
-
-download_arc_geotiff_data = function( year, month){
-   folder_name = paste0("data/", year, month)
-   start_date = paste0(year, month, "01")
-   month_days = monthDays(ymd(start_date))
-   end_date = paste0(year, month, month_days)
-   month_interval = interval(ymd(start_date), ymd(end_date))
-   days_in_interval = file_dates %within% month_interval
-   table( days_in_interval )
-   files_in_interval = filenames[days_in_interval]
-   num_files = length(files_in_interval)
-        
-   # download daily files  
-     for (i in 1:num_files){
-        
-         cat( paste(i, files_in_interval[i]), sep = "\n") ;flush.console()
-          
-          if (!dir.exists(folder_name)) dir.create(folder_name) 
-          if (file.exists( paste0(folder_name, "/",
-                                  unlist(strsplit(files_in_interval[i], ".zip" )) )
-                           )) {
-             next # do not redownload
-        
-          }
-          zip_file = paste0(folder_name, "/arc.zip")
-          con <- file(zip_file, open = "wb")
-          
-          cat(" downloading file...\n") ;flush.console()
-          
-          repeat{
-             success = TRUE
-             bin <- tryCatch(
-                {
-                getBinaryURL(paste0(url, files_in_interval[i]), ssl.verifypeer=FALSE)
-                },
-             
-             error = function(cond){
-                success = FALSE
-                print("download error")
-                return(success)
-             }
-             )
-            if (success == TRUE)   break
-          }
-          
-          cat("  writing file...\n") ;flush.console()
-          writeBin(bin, con)
-          close(con)
-          
-          cat("   unzipping file...\n") ;flush.console()
-          unzip(zip_file, exdir = folder_name)
-          cat("done \n \n") ;flush.console()
-     }
-}
-
-monthly_arc_geotiff = function( year, month){
-   folder_name = paste0("data/", year, month)
-   start_date = paste0(year, month, "01")
-   month_days = monthDays(ymd(start_date))
-   end_date = paste0(year, month, month_days)
-   month_interval = interval(ymd(start_date), ymd(end_date))
-   days_in_interval = file_dates %within% month_interval
-   table( days_in_interval )[2]
-   files_in_interval = filenames[days_in_interval]
-   num_files = length(files_in_interval)
-        
-    # combine daily files
-     rain_total = numeric(601551)
-     for (i in 1:num_files){  
-          arc_file = paste0(folder_name, "/",
-                                  unlist(strsplit(files_in_interval[i], ".zip" )) )
-          cat( arc_file ) 
-          
-         arc = try(
-                readGDAL(arc_file, silent = TRUE)
-                ) 
-         
-          if ( class(arc) == "try-error" ){
-             cat("file not found, or something...\n" )
-             next
-          }
-          rain = arc@data$band1
-          cat(summary(rain)); cat("\n")
-          rain_total = rain_total + rain
-     }
-     
-     cat( "MONTHLY TOTAL",  summary(rain_total) )
-     arc_period = arc
-     arc_period@data$band1 = rain_total
-     
-     # write summary to file
-     period_file_name = paste0("africa_arc", year, month)
-     save( arc_period, file = paste0( folder_name, "/", period_file_name) )
-}
-
-# get all months of year...(2000 to mid-2015 already downloaded)
-for (year in 2000:year(now())){
-   year = as.character(year)
-   for (i in 1:12){
-      month = c("01","02","03","04","05","06","07","08","09","10","11","12")
-      cat( month[i], year, "\n")
-      download_arc_geotiff_data(year, month[i])
-   }
-}
-
-# make monthly summary file
-for ( year in 2001:2004 ){
-   year = as.character(year)
-   for (i in 1:12){
-      month = c("01","02","03","04","05","06","07","08","09","10","11","12")
-      cat( month[i], year, "\n")
-      monthly_arc_geotiff(year, month[i])
-   }
-}
-
-
-
-
-# load data ####
-year = "2014"
-month = "05"
-folder_name = paste0("data/", year, month)
-period_file_name = paste0("africa_arc", year, month)
-file = paste0( folder_name, "/", period_file_name)
-# assign(period_file_name, local(get(load(period_file_name))) )
-arc_period = local(get(load(file))) 
 
 # plot as spatial lines  (base R)     ####    
 ac = as.image.SpatialGridDataFrame(arc_period)

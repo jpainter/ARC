@@ -2,6 +2,7 @@
 # libraries ####
 
 library(shiny)
+library(countrycode)
 library(lubridate)
 library(raster)
 library(sp)
@@ -9,8 +10,11 @@ library(rgdal)
 library(scales)
 library(RColorBrewer)
 library(maptools)
-require(rleafmap)
+library(rworldmap)
+# require(rleafmap)
+library(ggplot2)
 library(ggvis)
+library(data.table)
 library(dplyr)
 # data ####
 
@@ -19,14 +23,19 @@ library(dplyr)
    # load('tr2a.map.rda')
    countries = unique(tr2$country)
 
-   load("../../malaria_atlas/gadm/adm2.africa.gg.s")
-   load("../../malaria_atlas/gadm/adm1.africa.gg.s")
-   load("../../malaria_atlas/gadm/adm1.africa.centroids")
+   load("adm2.africa.gg.s")
+   load("adm1.africa.gg.s")
+   load("adm1.africa.centroids")
+   
+   # load("adm0.africa")
+   # proj = proj4string(adm0.africa)
+   proj = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 
    # Africa
-   world = getMap() %>% # transform to arc file datum
-   spTransform(CRS("+proj=longlat +a=6371000 +b=6371000 +no_defs"))
-   africa = fortify(world) %>% data.table() %>%
+   world = getMap() %>% # transform to adm0.africa projection
+   spTransform(CRS(proj))
+
+   africa = fortify(world) %>% 
       mutate( iso3c = countrycode(id, "country.name", "iso3c"),
               country = countrycode(iso3c, "iso3c", "country.name")
               ) %>%
@@ -68,6 +77,7 @@ ui <- shinyUI(
                   )),
 
                   column( 3,
+                          checkboxInput( "show_yearly_total", "View yearly rainfall" ),
                           sliderInput("month",
                               label = "Month",
                               min = 1,
@@ -112,7 +122,7 @@ server <- shinyServer(function(input, output) {
       
          if (input$country %in% "Africa"){ 
             
-               tr2a 
+               tr2a %>% mutate( adm1 = NA, adm2 = NA )
             
             } else {
                
@@ -122,12 +132,49 @@ server <- shinyServer(function(input, output) {
    
    d = reactive({ 
       
+      if (input$show_yearly_total){ 
+               
             d = tr2r() %>%
+               
+                  filter(
+                     year == input$year 
+                     ) %>%
+            
+               group_by( country, adm1, adm2, year) %>%
+               summarise(
+                  rain = mean( rain, na.rm = TRUE),
+                  prev.year = mean( prev.year, na.rm = TRUE),
+                  # year.change = mean( year.change, na.rm = TRUE),
+                  base.rain = mean( base.rain, na.rm = TRUE)
+                  # base.change = mean( base.change, na.rm = TRUE)
+
+               ) %>%
+               mutate(
+                  
+                  year.change = ifelse( prev.year > 0, rain / prev.year , NA),
+                  
+                  base.change = ifelse( base.rain > 0, rain / base.rain , NA),
+                  
+                  rain.class = cut(rain,
+                  breaks = c(0, 1, 10, 25, 100, 200, Inf),
+                  include.lowest = TRUE),
+
+                  year.change.class = cut(year.change,
+                  breaks = c(0, .25, .67, .85, 1.15, 1.5, 4, Inf),
+                  include.lowest = TRUE),
+
+                  base.change.class = cut(base.change,
+                  breaks = c(0, .25, .67, .85, 1.15, 1.5, 4, Inf),
+                  include.lowest = TRUE)
+               )
+            
+      } else {
+         d = tr2r() %>%
                   filter(
                      year == input$year , 
                      month %in% input$month
                      )
-      
+      }
       return(d)
   })
       
@@ -135,7 +182,7 @@ d.map = reactive({
    
    if (input$country %in% "Africa"){
       
-      d.map = africa %>%
+      d.map = africa %>% as.data.frame()  %>%
          left_join(
             d() %>% 
                mutate(iso3 = countrycode(country, "country.name", "iso3c")), 
@@ -159,21 +206,31 @@ d.map = reactive({
 map_vis = reactive({
 
       if (input$measure == "base.change"){
-      .title = "Rain, change from baseline 2000-2006"
-      fill_var = "base.change.class"
-      .colors  = c('#d73027','#fc8d59','#fee08b','#d9ef8b','#91cf60','#1a9850')
-      .labels = c( "0-25%", "25-75%", "75-100%", "100-150%", "150-500%", "500% +")
+      .title = "% change"
+      dm = d.map() %>% 
+         mutate(
+            fill_var = base.change.class
+         ) 
+      .colors  = c('#d73027','#fc8d59','#fee08b', '#ece7f2', '#d9ef8b','#91cf60','#1a9850')
+      .labels = c( "0-25%", "25-67%", "67-85%", "85-115%", "115-150%", "150-400%", "400% +")
    
       } else if (input$measure == "year.change"){
-      .title = "Rain, change from previous year"
-      fill_var = "year.change.class"
-      .colors  = c('#d73027','#fc8d59','#fee08b','#d9ef8b','#91cf60','#1a9850')
-      .labels = c( "0-25%", "25-75%", "75-100%", "100-150%", "150-500%", "500% +")
-
+      .title = "% change"
+      dm = d.map() %>% 
+         mutate( 
+            fill_var = year.change.class
+         )
+      .colors  = c('#d73027','#fc8d59','#fee08b', '#ece7f2', '#d9ef8b','#91cf60','#1a9850')
+      .labels = c( "0-25%", "25-67%", "67-85%", "85-115%", "115-150%", "150-400%", "400% +")
+      
       } else if (input$measure == "rain"){
-      .title = "Rain (mm)"
-      fill_var = "rain.class"
-      .labels = c( "0", "1-10", "10-25", "25-100", "100-200", "200+")
+      .title = "Rain (mm/month)"
+      dm = d.map() %>% 
+         mutate(
+            fill_var = rain.class
+         )
+  
+      .labels = c("0", "1-10", "10-25", "25-100", "100-200", "200+")
       .colors = c("#fef0d9", "#ffffe5", "#ffffbf", "#b8e186", "#4dac26", "#008837")
 
       }
@@ -197,19 +254,18 @@ map_vis = reactive({
    
    # d = d.map %>% mutate( f = rain.class ) 
       
-   vis = d.map %>%
+   vis = dm %>%
       group_by(group, id) %>%
       ggvis(~long, ~lat) %>%
-      layer_paths(strokeOpacity:=0.5, 
+      layer_paths(strokeOpacity:=0.5,
                   stroke:="#7f7f7f",
                   opacity := 0.9,
-                  fill = ~rain.class
+                  fill = ~fill_var
                   ) %>%
       layer_paths( data = adm.map,
-            strokeOpacity:=0.2, stroke:= "#252525"
+            strokeOpacity:=0.5, stroke:= "#252525"
                   ) %>%
-      scale_ordinal('fill', 
-                    range = .colors ) %>%
+      scale_ordinal('fill', range = .colors ) %>%
       add_legend(scales = 'fill', values = .labels, title = .title) %>%
       layer_text(data = centroids,
              x = ~x , y = ~y,
@@ -219,9 +275,9 @@ map_vis = reactive({
       hide_axis("y") %>%
       set_options(keep_aspect=TRUE, height = 600, width = 700) 
   
-   if ( !input$country %in% "Africa"){
+   # if ( !input$country %in% "Africa"){
       vis = vis %>% add_tooltip(hover_detail, "hover")
-   }
+   # }
       
    
    return(vis)
@@ -230,20 +286,24 @@ map_vis = reactive({
    hover_detail <- function(x){
    
       if( is.null(x$id)) return(NULL)
+
+      # paste( x[1,], collapse = " , " )
    
       # pick one of many map selected map rows (all have same rain data)
-      row_id = which( d.map()$id==x$id )[1] 
-      
-      if( length(row_id) == 0 ) return(NULL)
-      
-      detail <- d.map()[ row_id, ]  
+      row_id = which( d.map()$id==x$id )[1]
 
-      paste0("<b>", detail[,"adm2"], ", ", detail[,"adm1"], "</b><br>",
-                "This year: ", format(detail[,"rain"], digits = 2), " mm<br>",
-                "Previous year: ", format(detail[,"prev.year"], digits = 2), " mm<br>",
-                "<b>% of previous year: ", percent(detail[,"year.change"]), "</b><br>",
-                "Baseline, 2000-2006: ", format(detail[,"base.rain"], digits = 2), " mm<br>",
-                "<b>% of baseline: ", percent(detail[,"base.change"]), "</b>"
+      if( length(row_id) == 0 ) return(NULL)
+
+      detail <- d.map()[ row_id, ]
+
+      paste0("<b>", detail[,"adm2"], ", ", detail$adm1, "</b><br>",
+                "This year (", detail$year, "): ", format(detail$rain, digits = 2), " mm/month<br>",
+                "Previous year: ", format(detail$prev.year, digits = 2), " mm/month<br>",
+                "<b>% of previous year: ", percent( detail$year.change ), "</b><br>",
+                "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
+                "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
+                                                   percent( detail$base.change )
+                                                   ), "</b>"
       )
    } 
    
@@ -277,7 +337,7 @@ map_vis = reactive({
          group_by( year ) %>%
          summarise(
             rain_total = sum( rain_total, na.rm = TRUE),
-            rain_n = sum( rain_n, na.rm = TRUE) / 12 # area repeated for each 12 months
+            rain_n = sum( rain_n, na.rm = TRUE) 
          ) %>%
          mutate(
             rain = ifelse(rain_n>0, rain_total / rain_n, 0),
@@ -286,6 +346,7 @@ map_vis = reactive({
          group_by( selected ) %>%
          ggvis(~ year, ~ rain) %>%
          layer_bars( fill = ~ selected  ) %>%
+         add_axis("y", title = "Mean ARC2 rainfall (mm/month)") %>%
          add_axis("x", title= "Year",  format="####") %>%
          hide_legend( "fill") %>%
          add_tooltip( histo_detail, "hover") %>%
@@ -312,6 +373,8 @@ map_vis = reactive({
          group_by( selected ) %>%
          ggvis(~ month, ~ rain) %>%
          layer_bars( fill = ~selected ) %>%
+         add_axis("y", title = "Mean ARC2 rainfall (mm/month)") %>%
+         add_axis("x", title = "Month") %>%
          hide_legend( "fill") %>%
          add_tooltip( histo_detail, "hover") %>%
          set_options( width = "auto", height = "300px" )

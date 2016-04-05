@@ -54,7 +54,7 @@ ui <- shinyUI(
    fluidRow(
                   column( 2, titlePanel("Rain O'er Me") ),
                   
-                  column( 2,
+                  column( 3,
                           selectInput("country", 
                               label = "Country:", 
                               choices = c(countries, "Africa"),
@@ -75,37 +75,43 @@ ui <- shinyUI(
                                  interval = 1500
                               )
                   )),
-
                   column( 3,
-                          checkboxInput( "show_yearly_total", "View yearly rainfall" ),
                           sliderInput("month",
-                              label = "Month",
-                              min = 1,
-                              max = 12,
-                              value = 6 ,
-                              step = 1,
-                              animate = animationOptions(
-                                 loop = TRUE,
-                                 interval = 1500
-                                 ),
-                              dragRange = TRUE
-                  )),
+                                      label = "Month:",
+                                      min = 1,
+                                      max = 12,
+                                      value = 3 ,
+                                      step = 1,
+                                      animate = animationOptions(
+                                         loop = TRUE,
+                                         interval = 1500
+                                      ),
+                                      dragRange = TRUE
+                          ))
                   
-                  column( 2,
-                          selectInput("measure", 
-                              label = "Measurement:", 
-                              choices = c("rain","year.change","base.change"), 
-                              selected = "rain")
-                  )
-      )
+      ),
+   fluidRow(
+      column( 2,
+              selectInput("measure", 
+                          label = "Measurement:", 
+                          choices = c("rain","year.change","base.change"), 
+                          selected = "rain")
+      ),
+      
+      column( 7,
+              checkboxInput( "show_yearly_total", "Map yearly rainfall (uncheck for monthly rainfall)" , 
+                             value = TRUE)
+              )
+      
+   )
    # )
    ,
       
       mainPanel(
          fluidRow( 
             column( 6, uiOutput("map_ui"), ggvisOutput("map") ) ,
-            column( 1, NULL) ,
-            column( 5, 
+            # column( 1, NULL) ,
+            column( 6, 
                     uiOutput("year_histo_ui"), ggvisOutput("year_histo") ,
                     uiOutput("month_histo_ui"), ggvisOutput("month_histo") 
             )

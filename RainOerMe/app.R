@@ -109,7 +109,11 @@ ui <- shinyUI(
       
       mainPanel(
          fluidRow( 
-            column( 6, uiOutput("map_ui"), ggvisOutput("map") ) ,
+            column( 6, uiOutput("map_ui"), ggvisOutput("map"),
+                    "Map shows rainfall for selected year and month", br(), 
+                    "The month/year of map corresponds with the year/month highlighted in histograms", br(),
+                    "When 'Map yearly rainfall' is checked, only the average annual rainfall is shown"
+                    ) ,
             # column( 1, NULL) ,
             column( 6, 
                     uiOutput("year_histo_ui"), ggvisOutput("year_histo") ,
@@ -314,6 +318,8 @@ map_vis = reactive({
    } 
    
    map_vis %>% bind_shiny("map", "map_ui")
+   
+ 
 
 # HISTO VIS ####
    
@@ -340,13 +346,14 @@ map_vis = reactive({
    year_histo_vis = reactive({
    
       vis = tr2r %>% 
+         filter( year < year(now()) ) %>%
          group_by( year ) %>%
          summarise(
             rain_total = sum( rain_total, na.rm = TRUE),
             rain_n = sum( rain_n, na.rm = TRUE) 
          ) %>%
          mutate(
-            rain = ifelse(rain_n>0, rain_total / rain_n, 0),
+            rain = ifelse(rain_n>0 , rain_total / rain_n, 0),
             selected = ifelse( year %in% input$year, 1, 0)
          ) %>% 
          group_by( selected ) %>%

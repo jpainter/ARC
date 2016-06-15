@@ -1,0 +1,10 @@
+name: RainOerMe
+account: ddarko
+server: shinyapps.io
+appId: 91088
+bundleId: 464340
+url: https://ddarko.shinyapps.io/RainOerMe/
+when: 1464355757.04467
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: total_rainfall_adm2.rda

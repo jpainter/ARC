@@ -36,7 +36,7 @@ leaflet_choropleth_UI <- function(id, label = "leaflet_choropleth") {
 # Module server function
 leaflet_choropleth <- function(input, output, session, 
                                dataset = tmp_3, 
-                               var = 'month',
+                               var = 'day24',
                                ncolors = 5,
                                title = "Title of map here...",
                                leaflet_style = "Stamen.Watercolor"
@@ -54,14 +54,14 @@ leaflet_choropleth <- function(input, output, session,
   dpoly <- reactive({
       
       if (length(input$country > 3)){
-         d = d[ d@data$NAME_0 %in% input$country,]
+         d = adm1[ adm1@data$NAME_0 %in% input$country,]
       }
 
      return(d)
   })
 
   pal <- reactive({
-     colorBin("YlGn", domain = adm1@data$z, bins = ncolors, na.color = "#bdbdbd")
+     colorBin("YlGn", domain = dpoly()@data$z, bins = ncolors, na.color = "#bdbdbd")
 })
   # function to calculate number of rainy days (>0mm) in month
    
@@ -78,10 +78,10 @@ leaflet_choropleth <- function(input, output, session,
      }
      
      paste0("<strong>", dpoly()@data$NAME_0, ", ", dpoly()@data$NAME_1, "</strong>", 
-                      "<br>Monthly Rain(mm): ", 
+                      "<br>Rainfall(mm): ", 
                       dpoly()@data$z,
                 "<br>Rainy days (>5mm): ",
-                rain_days(1),
+                rain_days(5),
                 "<br>Rainy days (>20mm): ",
                 rain_days(20),
                 "<br>Rainy days (>40mm): ",
@@ -95,7 +95,7 @@ leaflet_choropleth <- function(input, output, session,
 
               addPolygons( data = dpoly(),
                           fillColor = ~pal()(z),
-                          fillOpacity = 0.8,
+                          fillOpacity = 0.65,
                           color = "#BDBDC3",
                           weight = 1,
                           popup = popup()
@@ -117,28 +117,4 @@ leaflet_choropleth <- function(input, output, session,
 }
 
 
-library(shiny)
 
-ui <- fluidPage(
-    fluidRow(
-       
-       column(6,
-              busyIndicator("Calculation In progress",wait = 0),
-              leaflet_choropleth_UI("A", "rain choropleth")),
-       column(6,
-              busyIndicator("Calculation In progress",wait = 0),
-              leaflet_choropleth_UI("B", "rain choropleth"))
-             
-    )
-  )
-
-server <- function(input, output, session) {
-   
-  callModule( leaflet_choropleth, "A" , dataset = tmp_3 , var = 'month',
-              title = "month", leaflet_style = "CartoDB.Positron" )
-   
-  callModule( leaflet_choropleth, "B", dataset = tmp_3 , var = 'day1',
-              title = "day1" , leaflet_style ="Stamen.Watercolor")
-}
-
-shinyApp(ui, server)

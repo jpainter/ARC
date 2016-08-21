@@ -49,15 +49,13 @@ leaflet_choropleth <- function(input, output, session,
   output$title = renderText(title)
 
   adm1@data = left_join( adm1@data, dataset, by = c("NAME_0" = "country", "NAME_1" = "adm1"))
-  
+  adm1@data$z = adm1@data[, var]
+        
   dpoly <- reactive({
-
       
-      adm1@data$z = adm1@data[, var]
-      
-      # if (length(input$country > 3)){
-         # d = d[ d@data$NAME_0 %in% input$country,]
-      # }
+      if (length(input$country > 3)){
+         d = d[ d@data$NAME_0 %in% input$country,]
+      }
 
      return(d)
   })
@@ -136,11 +134,11 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
    
-  callModule( leaflet_choropleth, "A" , tmp_3 , var = 'month',
-              "month", "CartoDB.Positron" )
+  callModule( leaflet_choropleth, "A" , dataset = tmp_3 , var = 'month',
+              title = "month", leaflet_style = "CartoDB.Positron" )
    
-  callModule( leaflet_choropleth, "B", tmp_3 , var = 'day1',
-              "day1" , "Stamen.TonerHybrid")
+  callModule( leaflet_choropleth, "B", dataset = tmp_3 , var = 'day1',
+              title = "day1" , leaflet_style ="Stamen.Watercolor")
 }
 
 shinyApp(ui, server)

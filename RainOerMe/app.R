@@ -19,6 +19,7 @@ library(dplyr)
 # data ####
 
    load('tr2.rda')
+   load('tr1.rda')
    load('tr2a.rda')
    # load('tr2a.map.rda')
    countries = unique(tr2$country)
@@ -26,6 +27,9 @@ library(dplyr)
    load("adm2.africa.gg.s")
    load("adm1.africa.gg.s")
    load("adm1.africa.centroids")
+   
+   # male sure adm1 (57) only has same countries as admin2 (46)
+   adm1.africa.gg.s = adm1.africa.gg.s %>% filter( NAME_0 %in% adm2.africa.gg.s[, "NAME_0"] )
    
    # load("adm0.africa")
    # proj = proj4string(adm0.africa)
@@ -132,7 +136,8 @@ server <- shinyServer(function(input, output) {
       
          if (input$country %in% "Africa"){ 
             
-               tr2a %>% mutate( adm1 = NA, adm2 = NA )
+               # tr2a %>% mutate( adm1 = NA, adm2 = NA )
+            tr1
             
             } else {
                
@@ -143,14 +148,30 @@ server <- shinyServer(function(input, output) {
    d = reactive({ 
       
       if (input$show_yearly_total){ 
+            
+         if (input$country %in% "Africa"){ 
+            
+            d = tr2r() %>%
                
+               filter(
+                  year == input$year 
+               ) %>%
+               
+               group_by( country, adm1, year ) 
+            
+         } else {
             d = tr2r() %>%
                
                   filter(
                      year == input$year 
                      ) %>%
             
-               group_by( country, adm1, adm2, year) %>%
+               group_by( country, adm1, adm2, year ) 
+            
+            
+         }  
+         
+            d = d %>%
                summarise(
                   rain = mean( rain, na.rm = TRUE),
                   prev.year = mean( prev.year, na.rm = TRUE),
@@ -179,12 +200,15 @@ server <- shinyServer(function(input, output) {
                )
             
       } else {
+         
          d = tr2r() %>%
                   filter(
                      year == input$year , 
                      month %in% input$month
                      )
+         
       }
+      
       return(d)
   })
       
@@ -192,11 +216,17 @@ d.map = reactive({
    
    if (input$country %in% "Africa"){
       
-      d.map = africa %>% as.data.frame()  %>%
+      # d.map = africa %>% as.data.frame()  %>%
+      #    left_join(
+      #       d() %>% 
+      #          mutate(iso3 = countrycode(country, "country.name", "iso3c")), 
+      #       by = c("iso3c" = "iso3")
+      #    ) 
+      
+      d.map = d()  %>% 
          left_join(
-            d() %>% 
-               mutate(iso3 = countrycode(country, "country.name", "iso3c")), 
-            by = c("iso3c" = "iso3")
+            adm1.africa.gg.s, 
+            by = c("country" = "NAME_0", "adm1" = "NAME_1")
          ) 
       
    } else {
@@ -249,7 +279,7 @@ map_vis = reactive({
       
       centroids = adm1.africa.centroids[0,]
       
-      adm.map = africa 
+      adm.map = adm1.africa.gg.s 
       
    } else {
       
@@ -306,15 +336,29 @@ map_vis = reactive({
 
       detail <- d.map()[ row_id, ]
 
-      paste0("<b>", detail[,"adm2"], ", ", detail$adm1, "</b><br>",
-                "This year (", detail$year, "): ", format(detail$rain, digits = 2), " mm/month<br>",
-                "Previous year: ", format(detail$prev.year, digits = 2), " mm/month<br>",
-                "<b>% of previous year: ", percent( detail$year.change ), "</b><br>",
-                "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
-                "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
-                                                   percent( detail$base.change )
-                                                   ), "</b>"
-      )
+      if (input$country %in% "Africa"){ 
+            paste0("<b>", detail$adm1, "</b><br>",
+                      "This year (", detail$year, "): ", format(detail$rain, digits = 2), " mm/month<br>",
+                      "Previous year: ", format(detail$prev.year, digits = 2), " mm/month<br>",
+                      "<b>% of previous year: ", percent( detail$year.change ), "</b><br>",
+                      "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
+                      "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
+                                                         percent( detail$base.change )
+                                                         ), "</b>"
+            ) 
+         } else {
+            paste0("<b>", detail[,"adm2"], ", ", detail$adm1, "</b><br>",
+                   "This year (", detail$year, "): ", format(detail$rain, digits = 2), " mm/month<br>",
+                   "Previous year: ", format(detail$prev.year, digits = 2), " mm/month<br>",
+                   "<b>% of previous year: ", percent( detail$year.change ), "</b><br>",
+                   "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
+                   "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
+                                                 percent( detail$base.change )
+                   ), "</b>"
+            )
+         }
+      
+      
    } 
    
    map_vis %>% bind_shiny("map", "map_ui")

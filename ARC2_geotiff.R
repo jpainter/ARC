@@ -2,7 +2,9 @@
 # see: http://www.cpc.ncep.noaa.gov/products/fews/AFR_CLIM/arc2_201303_final.pdf
 # example script from http://creativemorphometrics.co.vu/blog/2014/03/27/extracting-climate-data-in-r/
 
-
+get_rain_geotiff = function(source = "arc", period = "daily"){
+   
+}
 # packages  ####
 library(Hmisc)  # for monthDays function
 library(data.table)
@@ -19,19 +21,67 @@ require(rleafmap)
 library(dplyr)
 library(rworldmap) # this pkg has waaaay better world shapefiles
 library(ggthemes)
+library(RCurl)
+library(R.utils)
 
+# ARC2
 # download from ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/ ####
 
-   library(RCurl)
-   url <- "ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/"
-   filenames <- getURL(url, ftp.use.epsv = FALSE,dirlistonly = TRUE) 
-   filenames = unlist(strsplit(filenames, "\n" ))
-   file_list = strsplit(filenames, "[.]")
-   library(lubridate) # extract date
-   file_dates = unlist(round_date(ymd(sapply(file_list, "[[", 2))))
+#CHIRPS
+# monthly: ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/africa_monthly/tifs/
+# decad: 
+# daily: ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/africa_daily/tifs/p05/
 
+# get file list
+period = "daily"
+source = "arc"
+rmove = FALSE
+year = 2015
+month = "01"
+
+if (tolower(source) == "arc" ){ 
+      url <- "ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/" 
+      filenames <- getURL(url, ftp.use.epsv = FALSE,dirlistonly = TRUE) 
+      filenames = unlist(strsplit(filenames, "\n" ))
+      file_list = strsplit(filenames, "[.]")
+      library(lubridate) # extract date
+      file_dates = unlist(round_date(ymd(sapply(file_list, "[[", 2))))
+      
+      } else {
+         if (tolower(source) == "chirps" ){ 
+            if ( period == "monthly"){
+      
+               url <- "ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/africa_monthly/tifs/" 
+               filenames <- getURL(url, ftp.use.epsv = FALSE,dirlistonly = TRUE) 
+               filenames = unlist(strsplit(filenames, "\n" ))
+               file_list = strsplit(filenames, "[.]")
+               library(lubridate) # extract date
+               file_dates = dmy(
+                  paste0( "01", sapply(file_list, "[[", 4), sapply(file_list, "[[", 3))
+               )
+            } else {
+               # TODO: allow download from each--need to loop through folder directory
+               if ( period == "daily"){ # 2015 only...
+                  url <- "ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/africa_daily/tifs/p05/2015/" 
+                  filenames <- getURL(url, ftp.use.epsv = FALSE,dirlistonly = TRUE) 
+                  filenames = unlist(strsplit(filenames, "\n" ))
+                  file_list = strsplit(filenames, "[.]")
+                  library(lubridate) # extract date
+                  file_dates = ymd(
+                     paste0( sapply(file_list, "[[", 3), 
+                                    sapply(file_list, "[[", 4), 
+                                    sapply(file_list, "[[", 5)
+                                    )
+                  )
+               }
+            } 
+         }
+      }
+   
+ 
 # download and aggregate functions
-   download_arc_geotiff_data = function( year, month){
+   download_geotiff_data = function( year, month, source = 'chirps'){
+      
       folder_name = paste0("data/", year, month)
       start_date = paste0(year, month, "01")
       month_days = monthDays(ymd(start_date))
@@ -48,14 +98,14 @@ library(ggthemes)
             cat( paste(i, files_in_interval[i]), sep = "\n") ;flush.console()
              
              if (!dir.exists(folder_name)) dir.create(folder_name) 
-             if (file.exists( paste0(folder_name, "/",
-                                     unlist(strsplit(files_in_interval[i], ".zip" )) )
-                              )) {
+             if (file.exists( paste0(folder_name, "/", files_in_interval[i] )) ){
+                
                 next # do not redownload
            
              }
-             zip_file = paste0(folder_name, "/arc.zip")
-             con <- file(zip_file, open = "wb")
+           
+             downloaded_file = paste0(folder_name, paste0("/", files_in_interval[i] ) )
+             con <- file(downloaded_file, open = "wb")
              
              cat(" downloading file...\n") ;flush.console()
              
@@ -79,13 +129,14 @@ library(ggthemes)
              writeBin(bin, con)
              close(con)
              
-             cat("   unzipping file...\n") ;flush.console()
-             unzip(zip_file, exdir = folder_name)
+             # cat("   unzipping file...\n") ;flush.console()
+             # unzip(zip_file, exdir = folder_name)
              cat("done \n \n") ;flush.console()
         }
    }
    
-   monthly_arc_geotiff = function( year, month){
+   monthly_geotiff = function( year, month, source = "chirps", rmove = FALSE){
+
       folder_name = paste0("data/", year, month)
       start_date = paste0(year, month, "01")
       month_days = monthDays(ymd(start_date))
@@ -96,33 +147,69 @@ library(ggthemes)
       files_in_interval = filenames[days_in_interval]
       num_files = length(files_in_interval)
            
+      if ( source == "chirps"){
+         rain = matrix(, 2400000, num_files)
+      } else{
+         if (source == "arc")
+         rain = matrix(, 601551, num_files) 
+      }
+      
+      colnames(rain) = paste0( "day", 1:num_files)
+      
        # combine daily files
-        rain_total = numeric(601551)
-        for (i in 1:num_files){  
-             arc_file = paste0(folder_name, "/",
-                                     unlist(strsplit(files_in_interval[i], ".zip" )) )
-             cat( arc_file ) 
+        
+       for (i in 1:num_files){  
+             zip_file = paste0(folder_name, "/", files_in_interval[i])
+            
+            cat("   unzipping", zip_file, "...\n") ;flush.console()
+            if ( source == "arc"){
+               tiff_file = unzip(zip_file, exdir = tempdir()) # don't write uncompressed file
+            } else {
+               if ( source == "chirps"){
+                  tiff_file = gunzip(zip_file, 
+                                     temporary = TRUE, overwrite = TRUE,
+                                     remove = rmove) # keep original files while testing...
+               }
+            }
+            
              
-            arc = try(
-                   readGDAL(arc_file, silent = TRUE)
+            d = try(
+                   readGDAL(tiff_file, silent = TRUE)
                    ) 
             
-             if ( class(arc) == "try-error" ){
+             if ( class(d) == "try-error" ){
+   
                 cat("file not found, or something...\n" )
                 next
              }
-             rain = arc@data$band1
-             cat(summary(rain)); cat("\n")
-             rain_total = rain_total + rain
+            
+            # put values in matrix with column corresponding to number of days
+             rain[, paste0("day", i)] = d@data$band1
+
+             cat(summary(rain[, paste0("day", i)])); cat("\n")
+   
         }
         
-        cat( "MONTHLY TOTAL",  summary(rain_total) )
-        arc_period = arc
-        arc_period@data$band1 = rain_total # this gives monthly total; daily is (rain_total/num_files)
+       #bind matrix of rain totals to spatial polygon
+       d@data = cbind( d@data, rain )
+       
+        # remove original 'band1' column
+        d@data = d@data[, -1]
+       
+       # remove these from chirps datafile...
+       d@data[ d@data == -9999 ] <- NA 
+      
+       rain_total = rowSums( d@data, na.rm = TRUE )
+       cat( "MONTHLY TOTAL",  summary(rain_total) ); flush.console()
+       
+        # Add total rain data 
         
+        d@data$month = rain_total # replace original band with total rain
+
         # write summary to file
-        period_file_name = paste0("africa_arc", year, month)
-        save( arc_period, file = paste0( folder_name, "/", period_file_name) )
+        cat("writing file"); flush.console()
+        period_file_name = paste0("africa_", source, year, month)
+        save( d, file = paste0( folder_name, "/", period_file_name) )
    }
 
 # test
@@ -131,23 +218,27 @@ library(ggthemes)
 # Update...(2000 to mid-2015 already downloaded) ####
 
 # Get year/last month with data...
-   last_month_with_data = 3
+   last_month_with_data = 1
 # Get most recent month...
    most_recent_month = month( now() ) -1
    
 for (year in year(now()) ){
    
-   year = as.character(year)
+   file_list = get_source_files( source = 'arc')
    
-   # for (i in 1:12){
-   for (i in last_month_with_data:most_recent_month){
-      month = c("01","02","03","04","05","06","07","08","09","10","11","12")
+   year = as.character(year)
+   month = c("01","02","03","04","05","06","07","08","09","10","11","12")
+   
+   for (i in 9:12){
+   # for (i in last_month_with_data:most_recent_month){
+      
       cat( month[i], year, "\n")
       
-      download_arc_geotiff_data(year, month[i])
+      download_geotiff_data(year, month[i])
       
-      monthly_arc_geotiff(year, month[i])
+      monthly_geotiff(year, month[i], source = 'arc')
    }
+   
 }
 
    
@@ -157,7 +248,7 @@ for ( year in 2001:2004 ){
    for (i in 1:12){
       month = c("01","02","03","04","05","06","07","08","09","10","11","12")
       cat( month[i], year, "\n")
-      monthly_arc_geotiff(year, month[i])
+      monthly_geotiff(year, month[i])
    }
 }
 
@@ -166,13 +257,14 @@ for ( year in 2001:2004 ){
 
 
 # load data ####
-year = "2014"
-month = "05"
+year = "2015"
+month = "01"
+source = "chirps"
 folder_name = paste0("data/", year, month)
-period_file_name = paste0("africa_arc", year, month)
+period_file_name = paste0("africa_", source, year, month)
 file = paste0( folder_name, "/", period_file_name)
 # assign(period_file_name, local(get(load(period_file_name))) )
-arc_period = local(get(load(file))) 
+period = local(get(load(file))) 
 
 
 # country boundaries ####
@@ -212,27 +304,27 @@ pmi_world =  atlas %>% filter(id %in% pmi) %>%
 centroids =  centroids %>% 
    mutate( abrev = pmi_abrev[match(country, pmi)] )
 
-# plot as spatial lines  (base R)     ####    
-ac = as.image.SpatialGridDataFrame(arc_period)
-Dcl <- contourLines(ac, nlevels = 8)  # create contour object - change 8 for more/fewer levels
-SLDF <- ContourLines2SLDF(Dcl)  # convert to SpatialLinesDataFrame
-
-proj4string(SLDF) = CRS("+proj=longlat")
-s = spTransform(SLDF, CRS("+proj=wintri"))
-plot(s)
-
-plot(SLDF, col = terrain.colors(8))
-plot(world, add = TRUE)    # TODO: not working with rworldmaps      
+# QUICK plot as spatial lines  (base R)     ####    
+   ac = as.image.SpatialGridDataFrame(period)
+   Dcl <- contourLines(ac, nlevels = 8)  # create contour object - change 8 for more/fewer levels
+   SLDF <- ContourLines2SLDF(Dcl)  # convert to SpatialLinesDataFrame
+   
+   proj4string(SLDF) = CRS("+proj=longlat")
+   s = spTransform(SLDF, CRS("+proj=wintri"))
+   plot(s)
+   
+   plot(SLDF, col = terrain.colors(8))
+   plot(world, add = TRUE)    # TODO: not working with rworldmaps      
 
 # plot as spatial points  (ggplot)   SLOW!   ####     
-# ac.grid = as.image.SpatialGridDataFrame(arc_period) 
-ac.points = as.ppp.SpatialPoints(arc_period) %>% as.data.frame() %>% 
-   mutate(z = as.numeric(arc_period@data$band1))
-plot(ac.points)
-
-# filter to smaller region
-acp = ac.points %>% filter( findInterval(x, 17:18) == 1, findInterval(y, 0:1) == 1 )
-ggplot() + geom_point( data=acp, aes( x=x, y=y, color=z) ) # SLOW!
+   # ac.grid = as.image.SpatialGridDataFrame(arc_period) 
+   ac.points = as.ppp.SpatialPoints(period) %>% as.data.frame() %>% 
+      mutate(z = as.numeric(period@data$month))
+   plot(ac.points)
+   
+   # filter to smaller region
+   acp = ac.points %>% filter( findInterval(x, 17:18) == 1, findInterval(y, 0:1) == 1 )
+   ggplot() + geom_point( data=acp, aes( x=x, y=y, color=z) ) # SLOW!
 
 # ggplot spatialGridDataFrame as tiles ####
  # from https://rpubs.com/tmieno2/68747:
@@ -244,22 +336,21 @@ ggplot() + geom_point( data=acp, aes( x=x, y=y, color=z) ) # SLOW!
    # (If you would like to know the inner works of the function, 
    # please run the code line by line),
 
-library(data.table)
 sgdf_transform = function(sgdf){
   dim <- sgdf@grid@cells.dim
   bbox <- sgdf@bbox
   r <- raster(xmn=bbox[1,1], xmx=bbox[1,2], ymn=bbox[2,1], ymx=bbox[2,2], 
               ncols=dim[1], nrows=dim[2])
-  r <- setValues(r,matrix(sgdf@data$band1, nrow = dim[1], ncol = dim[2]) %>% t()) 
+  r <- setValues(r,matrix(sgdf@data$month, nrow = dim[1], ncol = dim[2]) %>% t()) 
   data <- rasterToPoints(r) %>% data.table()
   return(data)
 }
 
-arc_df = sgdf_transform(arc_period) %>%
+period_df = sgdf_transform(period) %>%
    # assign levels to data ####
    mutate(
       z = cut(layer, 
-              breaks = c(10, 50, 100, 200, 400, Inf), 
+              breaks = c(10, 50, 100, 200, Inf), 
               include.lowest = FALSE) 
    ) 
 
@@ -309,31 +400,36 @@ arc_df = sgdf_transform(arc_period) %>%
    gg + xlim(-20, 55) + ylim(-40, 40) 
    
 
+
+   
 # FUNCTION for LOAD and PLOT ####
 
-plot_arc=  function( year = "2014", month = "06"){
+plot_period=  function( year = "2015", month = "01", source = "chirps"){
    
-   period_file_name = paste0("africa_arc", year, month)
-   arc_period = local(get(load( paste0('data/', year, month, '/', period_file_name) ) ) )
-   projection(arc_period) <- CRS("+proj=longlat +a=6371000 +b=6371000 +no_defs")
-
+   period_file_name = paste0("africa_", source, year, month) 
+   
+   period = local(get(load( paste0('data/', year, month, '/', period_file_name) ) ) )
+   projection(period) <- CRS("+proj=longlat +a=6371000 +b=6371000 +no_defs")
    
    sgdf_transform = function(sgdf){
       dim <- sgdf@grid@cells.dim
       bbox <- sgdf@bbox
       r <- raster(xmn=bbox[1,1], xmx=bbox[1,2], ymn=bbox[2,1], ymx=bbox[2,2],
       ncols=dim[1], nrows=dim[2])
-      r <- setValues(r,matrix(sgdf@data$band1, nrow = dim[1], ncol = dim[2]) %>% t())
+      
+      # note choice of @data column (e.g. month)
+      r <- setValues(r, matrix(sgdf@data$month, nrow = dim[1], ncol = dim[2]) %>% t())
       data <- rasterToPoints(r) %>% data.table()
       return(data)
    }
-   arc_df = sgdf_transform(arc_period)
+   
+   period_df = sgdf_transform(period)
    
    # arc_df = fortify(arc_period)
    
    # assign levels to data 
-   arc_df$z = cut(arc_df$layer, 
-                           breaks = c(0, 50, 100, 200, 400, Inf), 
+   period_df$z = cut(period_df$layer, 
+                           breaks = c(0, 50, 100, 200, Inf), 
                            include.lowest = TRUE)
    
    # base plot 
@@ -367,19 +463,18 @@ plot_arc=  function( year = "2014", month = "06"){
            legend.key.size = unit(.3, "cm")
            )+ 
       xlim(-20.05, 55.05) +
-      ylim(-40.05, 40.05) +
-      coord_equal() 
+      ylim(-40.05, 40.05) 
    
    # final plot 
    
    gg = gg + 
-             geom_tile( data= arc_df, aes(x, y, alpha = z), fill = "blue") +
+             geom_tile( data = period_df, aes(x, y, alpha = z), fill = "blue") +
              ggtitle( paste("Rainfall (mm) during", month, "month", year))
       
    return(gg)
 }
 
-plot_arc()
+plot_period(source = 'chirps')
 
 # Animation ####
 library(animation)

@@ -21,9 +21,13 @@ leaflet_choropleth_UI <- function(id, label = "leaflet_choropleth") {
   ns <- NS(id)
       
   fluidRow(
-     column(12,
+     column(6,
             selectInput(ns("country"), "Country", choices = unique(adm1@data$NAME_0),
                         selected = "Algeria")
+  ),
+  column(6,
+            selectInput(ns("var"), "Variable", choices = colnames(tmp_3),
+                        selected = "")
   ),
    column(12,
          textOutput(ns("title"))
@@ -49,10 +53,14 @@ leaflet_choropleth <- function(input, output, session,
   output$title = renderText(title)
 
   adm1@data = left_join( adm1@data, dataset, by = c("NAME_0" = "country", "NAME_1" = "adm1"))
-  adm1@data$z = adm1@data[, var]
-        
+  # adm1@data$z = adm1@data[, var]
+  
+  updateSelectInput(session, "var", selected = var)   
+  
   dpoly <- reactive({
       
+      adm1@data$z = adm1@data[, input$var]
+     
       if (length(input$country > 3)){
          d = adm1[ adm1@data$NAME_0 %in% input$country,]
       }
@@ -102,7 +110,7 @@ leaflet_choropleth <- function(input, output, session,
                           )  %>%
 
                addLegend( pal = pal(),
-                          values = adm1@data$z,
+                          values = dpoly()@data$z,
                           opacity = 0.7,
                           position = 'bottomright',
                           title = paste(quote(rain), 'mm/month') )

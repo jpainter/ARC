@@ -52,14 +52,16 @@ pmi_world =  world[world$ADMIN.1 %in% pmi,]
 # Rainfall by pmi country ####
 total_rainfall = NA
 
-for (year in 2005:2014){
+tmp = list(NA)
+
+for (year in 2010:2017){
    year = as.character(year)
-   for (i in 1:12){
-      months = c("01","02","03","04","05","06","07","08","09","10","11","12")
+   for (months in 1:12){
+
       cat( months[i], year, "\n")
       
-      period_file_name = paste0("africa_arc", year, months[i])
-      arc_period = local(get(load( paste0('data/', year, months[i], '/', period_file_name) ) ) )
+      period_file_name = paste0("africa_arc", year, months)
+      arc_period = local(get(load( paste0('data/arc/', year, months, '/', period_file_name) ) ) )
       projection(arc_period) <- CRS("+proj=longlat +a=6371000 +b=6371000 +no_defs")
    
       # convert arc from raster to points
@@ -74,28 +76,35 @@ for (year in 2005:2014){
       
       for (each in 1:nrow(arc_over_pmi_mean)){ 
          
-            tmp = data.frame( country = rownames(arc_over_pmi_mean)[each],
-                              year = year, month = month(i), 
-                              rain_pmi = arc_over_pmi[each, 'band1'], 
-                              rain_pmi_mean = arc_over_pmi_mean[each, 'band1'])
+            index = paste0(year, month, each )
             
-            if (!is.data.frame(total_rainfall)){ 
-               total_rainfall = tmp
-               } else {
-               total_rainfall = rbind( total_rainfall, tmp)
-            }
-         }
+            tmp[[ index ]] = data.frame( 
+                              country = rownames(arc_over_pmi_mean)[each] ,
+                              year = year, 
+                              month = month, 
+                              rain_pmi = arc_over_pmi[ each, 'month'] , 
+                              rain_pmi_mean = arc_over_pmi_mean[ each, 'month']
+                              )
+            
+            # if (!is.data.frame(total_rainfall)){ 
+            #    total_rainfall = tmp
+            #    } else {
+            #    total_rainfall = rbind( total_rainfall, tmp)
+            # }
+      }
       
    }
 }
 
+arc_total_rainfall = rbindlist( tmp )
+
 head(total_rainfall)
-save(total_rainfall, file = 'total_rainfall.rda')
+saveRDS(arc_total_rainfall, file = 'arc_total_rainfall.rds')
 
 # CHART 
 
 
-load('total_rainfall.rda')
+total_rainfall = readRDS('arc_total_rainfall.rds')
 
 #    ggplot( data = total_rainfall, aes(color = year, y = rain, x = month)) +
 #       geom_line()

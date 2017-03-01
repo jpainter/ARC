@@ -113,7 +113,7 @@ leaflet_choropleth <- function(input, output, session,
                           values = dpoly()@data$z,
                           opacity = 0.7,
                           position = 'bottomright',
-                          title = paste(quote(rain), 'mm/month') )
+                          title = paste(quote(rain), 'mm/month') ) 
    })
 
   output$choropleth =   renderLeaflet({

@@ -5,6 +5,7 @@
 get_rain_geotiff = function(source = "arc", period = "daily"){
    
 }
+
 # packages  ####
 library(Hmisc)  # for monthDays function
 library(data.table)
@@ -24,10 +25,10 @@ library(ggthemes)
 library(RCurl)
 library(R.utils)
 
-# ARC2
-# download from ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/ ####
+# ARC2 ####
+# download from ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/ 
 
-#CHIRPS
+# CHIRPS ####
 # monthly: ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/africa_monthly/tifs/
 # decad: 
 # daily: ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/africa_daily/tifs/p05/
@@ -36,19 +37,20 @@ library(R.utils)
 period = "daily"
 source = "arc"
 rmove = FALSE
-year = 2015
-month = "01"
+year = 2016
+month = "05"
 
 if (tolower(source) == "arc" ){ 
       url <- "ftp://ftp.cpc.ncep.noaa.gov/fews/fewsdata/africa/arc2/geotiff/" 
-      filenames <- getURL(url, ftp.use.epsv = FALSE,dirlistonly = TRUE) 
-      filenames = unlist(strsplit(filenames, "\n" ))
+      filenames <- getURL(url, ftp.use.epsv = FALSE, dirlistonly = TRUE) 
+      filenames = unlist(strsplit(filenames, "\r\n" ))
       file_list = strsplit(filenames, "[.]")
       library(lubridate) # extract date
       file_dates = unlist(round_date(ymd(sapply(file_list, "[[", 2))))
       
-      } else {
-         if (tolower(source) == "chirps" ){ 
+      } 
+
+if (tolower(source) == "chirps" ){ 
             if ( period == "monthly"){
       
                url <- "ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/africa_monthly/tifs/" 
@@ -76,7 +78,7 @@ if (tolower(source) == "arc" ){
                }
             } 
          }
-      }
+      
    
  
 # download and aggregate functions
@@ -87,6 +89,7 @@ if (tolower(source) == "arc" ){
       month_days = monthDays(ymd(start_date))
       end_date = paste0(year, month, month_days)
       month_interval = interval(ymd(start_date), ymd(end_date))
+      
       days_in_interval = file_dates %within% month_interval
       table( days_in_interval )
       files_in_interval = filenames[days_in_interval]
@@ -113,7 +116,7 @@ if (tolower(source) == "arc" ){
                 success = TRUE
                 bin <- tryCatch(
                    {
-                   getBinaryURL(paste0(url, files_in_interval[i]), ssl.verifypeer=FALSE)
+                   getBinaryURL( paste0(url, files_in_interval[i]), ssl.verifypeer=FALSE)
                    },
                 
                 error = function(cond){
@@ -224,25 +227,25 @@ if (tolower(source) == "arc" ){
    
 for (year in year(now()) ){
    
-   file_list = get_source_files( source = 'arc')
+   # file_list = get_source_files( source = 'arc')
    
    year = as.character(year)
    month = c("01","02","03","04","05","06","07","08","09","10","11","12")
    
-   for (i in 9:12){
-   # for (i in last_month_with_data:most_recent_month){
+   # for (i in 9:12){
+   for (i in last_month_with_data:most_recent_month){
       
       cat( month[i], year, "\n")
       
-      download_geotiff_data(year, month[i])
+      download_geotiff_data(year = year, month = month[i], source = 'arc')
       
-      monthly_geotiff(year, month[i], source = 'arc')
+      monthly_geotiff(year = year, month = month[i], source = 'arc')
    }
    
 }
 
    
-# if data alredy downloaded, but not aggregated, make monthly summary file
+# if data downloaded, but not aggregated, make monthly summary file
 for ( year in 2001:2004 ){
    year = as.character(year)
    for (i in 1:12){

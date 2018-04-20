@@ -1,0 +1,75 @@
+---
+title: "Monthly Rainfall"
+output: 
+  flexdashboard::flex_dashboard:
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+
+library(countrycode)
+library(tidyverse)
+library(lubridate)
+   
+```
+
+```{r datasets, include=FALSE}
+load( 'adm0.africa')
+
+adm_data = adm0.africa@data
+
+country.list = dplyr::count(adm_data, ISO) %>% 
+   mutate(
+     country = countrycode(ISO , "iso3c", "country.name" )
+     ) %>% .$country
+
+country.list = c("Africa" ,  country.list )
+
+adm1_rain = readRDS("arc_adm1_rainfall.rds") %>%
+   mutate( date = ymd( paste( year, month , 1, sep = "-") ) )
+
+
+```
+
+Country {.sidebar }
+----------------------------------------------------------------------
+
+```{r sidebar}
+   selectInput("country", h3("Country"),
+               choices = country.list ,
+               selected = "Benin")
+   
+
+```
+
+
+Column 
+-----------------------------------------------------------------------
+
+### Rainfall
+
+<!-- Rainfall estimated from the NOAA Climate Prediction Center (CPC) Africa Rainfall Climatology Version 2.0 (ARC2) -->
+
+
+
+```{r}
+country = reactive({ input$country })
+
+
+source("rain_module_flex.R")
+
+rain_map_UI( "map"  )
+
+callModule( rain_map_Output, "map",
+              dataset = adm1_rain ,
+              country = country
+   )
+```
+
+<!-- *Clicking on an area in map gives detailed estimated for that region* -->
+
+
+<!-- Column -->
+<!-- ----------------------------------------------------------------------- -->
+
+<!-- ### Dygraph -->

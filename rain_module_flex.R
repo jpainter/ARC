@@ -17,6 +17,7 @@ library(dygraphs)
 library(htmlwidgets)
 library(webshot)
 
+
 # dataset ####
 
 
@@ -26,10 +27,15 @@ library(webshot)
    # directory for gadm files
    base.fileneame = "../malaria_atlas/gadm/" 
    
-   adm1.africa = readRDS( paste0( base.fileneame, "adm1.africa.RDS" ) )
-   # adm1 = readRDS( paste0( base.fileneame, "adm1.africa.s.RDS" ) )
-   # adm1 = spp <- SpatialPolygonsDataFrame(adm1, data=adm1.africa@data )
-   adm1 = adm1.africa
+   # adm1.africa = readRDS( paste0( base.fileneame, "adm1.africa.RDS" ) )
+   
+   # Consider simplifying maps: 
+   # https://gis.stackexchange.com/questions/236340/simplifying-and-plotting-polygons-in-leaflet-package-in-r/236465#236465
+   # the ones below will not display kenya or tz in leaflet 
+   
+   load( paste0( base.fileneame, "adm1.africa.s" ) )
+   adm.map = adm1.africa.s
+
 
    # adm0_rain = readRDS("arc_adm0_rainfall.rds")
    adm1_rain = readRDS("arc_adm1_rainfall.rds")
@@ -58,7 +64,7 @@ library(webshot)
 
                              selectInput( ns("var"), "Variable",
                                           choices = vars,
-                                          selected = 'rain'
+                                          selected = "mean_rain"
                              )
                           )
                              ,
@@ -91,7 +97,7 @@ library(webshot)
 
    rain_map_Output = function(  input, output, session ,
 
-                               dataset = NULL,
+                               dataset = adm1_rain ,
                                country = "Burundi" ,
                                ncolors = 5 ,
                                title = "Rainfall" ,
@@ -128,7 +134,7 @@ library(webshot)
          })
       
 
-        data <- reactive({
+   data <- reactive({
 
            req( input$date_range, selected_country_iso3() )
 
@@ -155,6 +161,7 @@ library(webshot)
            data =  data %>%  filter( select.date  )
            
            data$z = data[, input$var]
+           # data$z = data[, "mean_rain"]
            
            # convert NaN to NA
            data$z[ is.nan(data$z) ] = NA
@@ -163,62 +170,64 @@ library(webshot)
 
            })
 
-        dpoly <- reactive({
+   dpoly <- reactive({
 
            req( data() )
 
           # mean over time-period selected
            data = data() %>%
-              group_by( adm0, adm1 ) %>%
+              group_by( NAME_0, NAME_1 ) %>%
               summarise( z = mean(z, na.rm = TRUE) )
            
            # data = data %>%
-           #    group_by( adm0, adm1 ) %>%
+           #    group_by( NAME_0, NAME_1  ) %>%
            #    summarise( z = mean(z, na.rm = TRUE) )
 
-           adm = adm1[ adm1@data$iso3 %in% country_iso3() , ]
-           # adm = adm1[ adm1@data$iso3 %in% iso3 , ]
+           country.map = adm.map[ adm.map@data$iso3 %in% country_iso3() , ]
+           # country.map = adm.map[ adm.map@data$iso3 %in% iso3 , ]
 
-           adm@data = inner_join( adm1@data,
+           country.map@data = inner_join( country.map@data,
                                   data ,
-                                  by = c("NAME_0" = "adm0", "NAME_1" = "adm1" )
+                                  by = c("NAME_0" , "NAME_1")
            )
 
            # convert NaN to NA
-           adm@data$z[ is.nan(adm@data$z) ] = NA
+           country.map@data$z[ is.nan(country.map@data$z) ] = NA
 
-           return( adm )
+           return( country.map )
         })
 
-        pal <- reactive({
-
+   pal <- reactive({
+           values = dataset[ , input$var ] %>% unlist %>% unname
+           
            # colorNumeric("YlGn",
            #              # dataset[ dataset$iso3 %in% selected_country_iso3() , "rain" ],
-           #              dataset[ , "rain" ],
+           #              domain = values  ,
            #              alpha = TRUE, na.color = "#bdbdbd")
 
-           # colorBin("YlGn", domain = dpoly()@data$z, bins = ncolors, na.color = "#bdbdbd")
+           # colorBin("YlGn", domain = values , bins = ncolors, na.color = "#bdbdbd")
             
-           values = dataset[ , input$var ] %>% unlist 
-           
-           colorBin( "YlGn" , 
+           # values = dataset[ , input$var ] %>% unlist %>% unname
+           # # values = dataset[ , "mean_rain" ] %>% unlist 
+           # 
+           colorBin( "YlGn" ,
                      domain =  values ,
-                     bins = quantile( values , 
-                                      probs = seq(0, 1, 0.1) , 
-                                      na.rm = TRUE 
+                     bins = quantile( values ,
+                                      probs = seq(0, 1, 0.2) ,
+                                      na.rm = TRUE
                                       )  %>% round(0) %>% unique ,
                      pretty = TRUE, alpha = TRUE, na.color = "#bdbdbd")
 
-           # colorQuantile( "YlGn" , domain =  dataset[ , "rain" ] ,
-           #           n = ncolors, 
+           # colorQuantile( "YlGn" , domain =  values ,
+           #           n = ncolors,
            #           alpha = TRUE, na.color = "#bdbdbd")
-           # 
+
       })
 
 
-        popup <- reactive({
+   popup <- reactive({
 
-           rain_days = function(min = 10){
+           rain_days = function( min = 10  ){
 
             # rowSums(
             #    apply(
@@ -226,6 +235,9 @@ library(webshot)
             #       2, FUN = function(x) x >= min)
             #    )
               
+               x = dpoly()@data$z
+               y = sum(  x >= min , na.rm = TRUE )
+               return(y)
               
            }
 
@@ -237,7 +249,7 @@ library(webshot)
       )
         })
 
-        labels <- reactive({
+   labels <- reactive({
               sprintf(
                   "<strong>%s</strong><br/>%g rain / mm<sup>2</sup>",
                   dpoly()@data$NAME_1 ,
@@ -257,10 +269,10 @@ library(webshot)
               # addPolygons(
               # 
               #              data = adm ,
-              #              fillColor = NULL,
+              #              fillColor = ~pal()(z) ,
               #              color = "#BDBDC3",
               #              weight = 1
-              # )  %>%
+              # )
 
               addLayersControl(
                  baseGroups = c("background map" ),
@@ -276,7 +288,7 @@ library(webshot)
                            fillOpacity = .5,
                            color = "black",
                            weight = 1 ,
-                           smoothFactor = 0.2 
+                           smoothFactor = 0.2
                            # highlight = highlightOptions(
                            #    weight = 4,
                            #    color = "gray",
@@ -288,52 +300,18 @@ library(webshot)
                            #                 padding = "3px 8px"),
                            #    textsize = "15px",
                            #    direction = "auto")
-              )
-
-
-           })
-
-        # observe({
-        #    req( dpoly() , pal() , labels(), popup() )
-        # 
-        #    leafletProxy("mymap") %>%
-        #    removeShape("monthly rainfall (mm)")  %>%
-        #    addPolygons( data = dpoly(),
-        #                 group = "monthly rainfall (mm)" ,
-        #                 # label = labels(),
-        #                 # popup = popup() ,
-        #                 # fillColor = ~pal()(z) ,
-        #                 fillOpacity = .5,
-        #                 color = "black",
-        #                 weight = 1,
-        #                 highlight = highlightOptions(
-        #                    weight = 4,
-        #                    color = "gray",
-        #                    dashArray = "",
-        #                    fillOpacity = 0.7,
-        #                    bringToFront = TRUE),
-        #                 labelOptions = labelOptions(
-        #                    style = list("font-weight" = "normal",
-        #                                 padding = "3px 8px"),
-        #                    textsize = "15px",
-        #                    direction = "auto")
-        #    )
-        # })
-
-        observe({
-           req( dpoly(), country() )
-
-           leafletProxy("mymap") %>%
-              clearControls()  %>%
+              ) %>%
+              
               addLegend( pal = pal(),
                          layerId = "legend" ,
-                         values = dataset[ , "rain" ] ,
+                         values = dataset[ , input$var ] ,
                          # values = dataset[ dataset$iso3 %in% selected_country_iso3() , "rain" ] ,
                          opacity = 0.7,
                          position = 'bottomright',
-           title = paste(quote(rain), 'mm/month') )
-        })
+                         title = paste(quote(rain), 'mm/month') )
 
+
+           })
 
 }
 

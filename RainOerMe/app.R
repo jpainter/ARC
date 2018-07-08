@@ -20,7 +20,7 @@ library(dplyr)
 
    load('tr2.rda')
    load('tr1.rda')
-   load('tr2a.rda')
+   # load('tr2a.rda')
    # load('tr2a.map.rda')
    countries = unique(tr2$country)
 
@@ -43,7 +43,8 @@ library(dplyr)
       mutate( iso3c = countrycode(id, "country.name", "iso3c"),
               country = countrycode(iso3c, "iso3c", "country.name")
               ) %>%
-      filter(iso3c %in% countrycode_data[countrycode_data$continent == "Africa", "iso3c"]) %>%
+      filter(iso3c %in% codelist[codelist$continent == "Africa", "iso3c"]) %>%
+      # filter(iso3c %in% countrycode_data[countrycode_data$continent == "Africa", "iso3c"]) %>%
       group_by( group )
       
    min.year = as.integer( min(tr2$year) )
@@ -98,7 +99,7 @@ ui <- shinyUI(
       column( 2,
               selectInput("measure", 
                           label = "Measurement:", 
-                          choices = c("rain","year.change","base.change"), 
+                          choices = c("rain","year.change","base.change"),
                           selected = "rain")
       ),
       

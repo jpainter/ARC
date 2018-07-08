@@ -7,7 +7,7 @@ library(tidyverse)
 library(RCurl)
 library(rgdal)
 
-# downloads list of daily files
+# downloads list of daily files ####
 get_file_list = function( source = c("arc", "chirps" ), period = "daily"){
 
 # set internet source and download file locations  ####
@@ -177,7 +177,7 @@ library(R.utils)
 
 
 # downloaded datsets ####
-for ( year in 2017:2018 ){
+for ( year in 2018 ){
    
    download_years_rain_geotiff( year = year, source = "arc")
    
@@ -305,6 +305,8 @@ for ( year in 2017:2018 ){
 ################### TEST
 # aggregate_geotiff_monthly(source = 'arc', year = 2016, month = 2 )
 # yearly_rain_geotiff( source = 'chirps', "2014")
+
+
 
 ### NEXT STEP ######
 

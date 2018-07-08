@@ -71,9 +71,9 @@ adm_rainfall = function( adm = 0 , years = 2010:2018 ){
             }
             
             country = vectorStringSplit(part = 1)
-            if ( adm >= 0 ) name1 = vectorStringSplit(part = 1)
-            if ( adm >= 1 ){ name2 = vectorStringSplit(part = 2) } else { name1 = NA }
-            if ( adm >= 2 ){  name3 = vectorStringSplit(part = 3) } else { name2 = NA }
+            if ( adm >= 0 ) name0 = vectorStringSplit(part = 1)
+            if ( adm >= 1 ){ name1 = vectorStringSplit(part = 2) } else { name1 = NA }
+            if ( adm >= 2 ){  name2 = vectorStringSplit(part = 3) } else { name2 = NA }
             
             # see: rownames(arc_over_africa)[is.na(arc_over_africa)]
             # TODO: How to deal with missing areas. is adm0 too small for arc?
@@ -117,7 +117,7 @@ adm_rainfall = function( adm = 0 , years = 2010:2018 ){
          tmp[[ index ]] = data.frame( 
             country = country , 
             iso3 = countrycode( country, "country.name" , "iso3c" ) ,
-            NAME_0 = name0 ,
+            NAME_0 = country ,
             NAME_1 = name1 , 
             NAME_2 = name2 , 
             year = rep( year, length(country) ) , 

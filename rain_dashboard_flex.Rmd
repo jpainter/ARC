@@ -61,7 +61,7 @@ source("rain_module_flex.R")
 rain_map_UI( "map"  )
 
 callModule( rain_map_Output, "map",
-              dataset = adm1_rain ,
+              # dataset = NULL ,
               country = country
    )
 ```

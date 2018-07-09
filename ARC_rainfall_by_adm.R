@@ -122,18 +122,17 @@ adm_rainfall = function( adm = 0 , years = 2010:2018 ){
             NAME_2 = name2 , 
             year = rep( year, length(country) ) , 
             month = rep( month, length(country) )  , 
-            total_rain = t , 
+            rain_total = t , 
             rain_observations = n ,
-            mean_rain = mean,
+            rain_mean = mean,
             rain_variance = var,
             stringsAsFactors = FALSE
-         )
-         
+         ) 
       }
       
    }
    
-   arc_total_rainfall = rbindlist( tmp )
+   arc_total_rainfall = rbindlist( tmp ) %>%
    
    print( paste0( "head arc_adm" , adm , "_rainfall.rds" ) )
    print( head( arc_total_rainfall ) )

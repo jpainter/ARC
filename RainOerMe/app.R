@@ -18,11 +18,34 @@ library(data.table)
 library(dplyr)
 # data ####
 
-   load('tr2.rda')
-   load('tr1.rda')
+   # load('tr2.rda')
+   # load('tr1.rda')
    # load('tr2a.rda')
    # load('tr2a.map.rda')
    countries = unique(tr2$country)
+   
+   # alternative data, same as used for rain_module
+   adm2_rain = readRDS("arc_adm2_rainfall.rds") %>%
+      mutate(  
+         date = ymd( paste( adm2_rain$year, adm2_rain$month, 1, sep = "-")) , 
+         prev.year = lag( mean_rain , 1), 
+         
+         year.change = ifelse( prev.year > 0 , 
+                               mean_rain  / prev.year,
+                               mean_rain ) ,
+          amd1 = NAME_1 ,
+         adm2 = NAME_2 
+      )  %>%
+      rename( rain_mean = mean_rain,  rain_total = total_rain )
+   
+   # adm2_rain$date = ymd( paste( adm2_rain$year, adm2_rain$month, 1, sep = "-"))
+   
+   tr2 = adm2_rain
+   tr2$rain = tr2$rain_mean
+   # tr2$prev.year = 1
+   tr2$base.rain = 1
+   # tr2$adm1 = tr2$NAME_1
+   # tr2$adm2 = tr2$NAME_2
 
    load("adm2.africa.gg.s")
    load("adm1.africa.gg.s")
@@ -99,8 +122,11 @@ ui <- shinyUI(
       column( 2,
               selectInput("measure", 
                           label = "Measurement:", 
-                          choices = c("rain","year.change","base.change"),
-                          selected = "rain")
+                          # choices = c("rain","year.change","base.change"),
+                          choices = c("rain_mean", 'rain_total', 'rain_variance', 'rain_observations'),
+                          # selected = "rain" ,
+                          selected = 'rain_mean'
+                          )
       ),
       
       column( 7,
@@ -142,7 +168,8 @@ server <- shinyServer(function(input, output) {
             
             } else {
                
-               tr2 %>% filter( country %in% input$country )
+               tr2 %>% filter( country %in% input$country ) %>%
+                  mutate( adm1 = NAME_1, adm2 = NAME_2 )
             }
    })
    
@@ -187,7 +214,7 @@ server <- shinyServer(function(input, output) {
                   
                   base.change = ifelse( base.rain > 0, rain / base.rain , NA),
                   
-                  rain.class = cut(rain,
+                  rain.class = cut( rain,
                   breaks = c(0, 1, 10, 25, 100, 200, Inf),
                   include.lowest = TRUE),
 
@@ -231,10 +258,12 @@ d.map = reactive({
          ) 
       
    } else {
+      
       d.map = d()  %>% 
       left_join(
          adm2.africa.gg.s, 
-         by = c("country" = "NAME_0", "adm1" = "NAME_1", "adm2" = "NAME_2")
+         by = c("country" = "NAME_0", "adm1" = "NAME_1" , "adm2" = "NAME_2")
+         # by = c("NAME_0",  "NAME_1", "NAME_2")
       ) 
    }
 
@@ -246,16 +275,18 @@ d.map = reactive({
 
 map_vis = reactive({
 
-      if (input$measure == "base.change"){
-      .title = "% change"
-      dm = d.map() %>% 
-         mutate(
-            fill_var = base.change.class
-         ) 
-      .colors  = c('#d73027','#fc8d59','#fee08b', '#ece7f2', '#d9ef8b','#91cf60','#1a9850')
-      .labels = c( "0-25%", "25-67%", "67-85%", "85-115%", "115-150%", "150-400%", "400% +")
-   
-      } else if (input$measure == "year.change"){
+      # if (input$measure == "base.change"){
+      # .title = "% change"
+      # dm = d.map()  %>% 
+      #    mutate(
+      #       fill_var = base.change.class
+      #    ) 
+      # .colors  = c('#d73027','#fc8d59','#fee08b', '#ece7f2', '#d9ef8b','#91cf60','#1a9850')
+      # .labels = c( "0-25%", "25-67%", "67-85%", "85-115%", "115-150%", "150-400%", "400% +")
+      # 
+      # } else 
+         
+      if (input$measure == "year.change"){
       .title = "% change"
       dm = d.map() %>% 
          mutate( 
@@ -264,9 +295,10 @@ map_vis = reactive({
       .colors  = c('#d73027','#fc8d59','#fee08b', '#ece7f2', '#d9ef8b','#91cf60','#1a9850')
       .labels = c( "0-25%", "25-67%", "67-85%", "85-115%", "115-150%", "150-400%", "400% +")
       
-      } else if (input$measure == "rain"){
+      } else if (input$measure == "rain_mean"){
+         
       .title = "Rain (mm/month)"
-      dm = d.map() %>% 
+      dm = d.map() %>%
          mutate(
             fill_var = rain.class
          )
@@ -298,7 +330,7 @@ map_vis = reactive({
    vis = dm %>%
       group_by(group, id) %>%
       ggvis(~long, ~lat) %>%
-      layer_paths(strokeOpacity:=0.5,
+      layer_paths(strokeOpacity:= 0.5,
                   stroke:="#7f7f7f",
                   opacity := 0.9,
                   fill = ~fill_var
@@ -339,23 +371,23 @@ map_vis = reactive({
 
       if (input$country %in% "Africa"){ 
             paste0("<b>", detail$adm1, "</b><br>",
-                      "This year (", detail$year, "): ", format(detail$rain, digits = 2), " mm/month<br>",
+                      "This year (", detail$year, "): ", format(detail$rain_mean, digits = 2), " mm/month<br>",
                       "Previous year: ", format(detail$prev.year, digits = 2), " mm/month<br>",
-                      "<b>% of previous year: ", percent( detail$year.change ), "</b><br>",
-                      "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
-                      "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
-                                                         percent( detail$base.change )
-                                                         ), "</b>"
-            ) 
+                      "<b>% of previous year: ", percent( detail$year.change ), "</b><br>"
+                      # "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
+                      # "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
+                      #                                    percent( detail$base.change ) )
+                                                         , "</b>"
+            )
          } else {
             paste0("<b>", detail[,"adm2"], ", ", detail$adm1, "</b><br>",
-                   "This year (", detail$year, "): ", format(detail$rain, digits = 2), " mm/month<br>",
+                   "This year (", detail$year, "): ", format(detail$rain_mean , digits = 2), " mm/month<br>",
                    "Previous year: ", format(detail$prev.year, digits = 2), " mm/month<br>",
-                   "<b>% of previous year: ", percent( detail$year.change ), "</b><br>",
-                   "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
-                   "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
-                                                 percent( detail$base.change )
-                   ), "</b>"
+                   "<b>% of previous year: ", percent( detail$year.change ), "</b><br>"
+                   # "Baseline, 2000-2006: ", format(detail$base.rain, digits = 2), " mm/month<br>",
+                   # "<b>% of baseline: ", ifelse( is.na(detail$base.change), "",
+                   #                               percent( detail$base.change )
+                   , "</b>"
             )
          }
       
@@ -395,10 +427,10 @@ map_vis = reactive({
          group_by( year ) %>%
          summarise(
             rain_total = sum( rain_total, na.rm = TRUE),
-            rain_n = sum( rain_n, na.rm = TRUE) 
+            rain_observations = sum( rain_observations, na.rm = TRUE) 
          ) %>%
          mutate(
-            rain = ifelse(rain_n>0 , rain_total / rain_n, 0),
+            rain = ifelse( rain_observations > 0 , rain_total / rain_observations, 0),
             selected = ifelse( year %in% input$year, 1, 0)
          ) %>% 
          group_by( selected ) %>%
@@ -422,10 +454,10 @@ map_vis = reactive({
          group_by( month ) %>%
          summarise(
             rain_total = sum( rain_total, na.rm = TRUE),
-            rain_n = sum( rain_n, na.rm = TRUE)
+            rain_observations = sum( rain_observations, na.rm = TRUE)
          ) %>%
          mutate(
-            rain = ifelse(rain_n>0, rain_total / rain_n, 0),
+            rain = ifelse( rain_observations >0, rain_total / rain_observations , 0),
             selected = ifelse( month %in% input$month, 1, 0)
          ) %>% 
          group_by( selected ) %>%

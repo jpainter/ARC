@@ -6,6 +6,11 @@
 library(tidyverse)
 library(RCurl)
 library(rgdal)
+library(lubridate)
+
+# Year range ####
+
+year_range = 2000:year(now())
 
 # downloads list of daily files ####
 get_file_list = function( source = c("arc", "chirps" ), period = "daily"){
@@ -73,7 +78,7 @@ if (tolower(source) == "chirps" ){
 # file_list = get_file_list( "chirps" )
 
 
-## downloads a month of daily geotiff files and aggregates them into one monthly file
+## download a month of daily geotiff files and aggregates them into one monthly fil
 
 download_years_rain_geotiff = function(
    source = "arc" , 
@@ -175,9 +180,8 @@ library(R.utils)
    }
 }
 
-
 # downloaded datsets ####
-for ( year in 2018 ){
+for ( year in year_range ){
    
    download_years_rain_geotiff( year = year, source = "arc")
    
@@ -295,7 +299,7 @@ aggregate_geotiff_monthly = function(
    save( d, file = paste0( folder_name, "/", period_file_name) )
 }
 
-for ( year in 2017:2018 ){
+for ( year in year_range ){
    for ( month in 1:12 ){
       
       aggregate_geotiff_monthly(source = 'arc', year = year, month = month)
@@ -308,7 +312,7 @@ for ( year in 2017:2018 ){
 
 
 
-### NEXT STEP ######
+### Summarise by adm area  ######
 
 # Agregate into areas defined by gadm maps, e.g. arc_adm0_rainfall.rds,
 # by running script, ARC_rainfall_by_adm.R
@@ -318,7 +322,7 @@ for ( year in 2017:2018 ){
 source( "ARC_rainfall_by_adm.R" )
 
 # create files for adm0, adm1, and adm2 
-map( 0:2 , ~adm_rainfall( adm = .x , years = 2010:2018 ) )
+map( 0:2 , ~adm_rainfall( adm = .x , years = year_range ) )
 
 # Note this takes awhile to run.  The first month takes the longest because it assigns
 # the area to the rain data; subsequent months run much faster.  

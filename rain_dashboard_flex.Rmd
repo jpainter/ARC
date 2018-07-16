@@ -35,9 +35,17 @@ Country {.sidebar }
 ----------------------------------------------------------------------
 
 ```{r sidebar}
-   selectInput("country", h3("Country"),
-               choices = country.list ,
-               selected = "Benin")
+   # selectInput("country", h3("Country"),
+   #             choices = country.list ,
+   #             selected = "Benin")
+
+      selectInput("adm", h3("Administrative Boundry"),
+                  choices = c("Adm0", "Adm1", "Adm2") ,
+                  selected = "Adm1") 
+      
+      selectInput("country", h3("Country"),
+                  choices = country.list ,
+                  selected = "Angola")
    
 
 ```

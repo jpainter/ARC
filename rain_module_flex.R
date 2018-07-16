@@ -4,6 +4,7 @@
 library(tidyverse)
 library(lubridate)
 library(countrycode)
+# library(plotly)
 
 library(crosstalk)
 library(sp)
@@ -16,6 +17,7 @@ library(DT)
 library(dygraphs)
 library(htmlwidgets)
 library(webshot)
+library(ggalt)
 
 
 # dataset ####
@@ -25,7 +27,7 @@ library(webshot)
    # load( 'adm1.africa.s')
 
    # directory for gadm files
-   base.fileneame = "../malaria_atlas/gadm/" 
+   # base.fileneame = "../malaria_atlas/gadm/" 
    
    # adm1.africa = readRDS( paste0( base.fileneame, "adm1.africa.RDS" ) )
    
@@ -33,12 +35,23 @@ library(webshot)
    # https://gis.stackexchange.com/questions/236340/simplifying-and-plotting-polygons-in-leaflet-package-in-r/236465#236465
    # the ones below will not display kenya or tz in leaflet 
    
-   load( paste0( base.fileneame, "adm1.africa.s" ) )
+# set data directory
+   dataset_folder =  "Malaria_Dashboard_Data_Files/"  # as part of dashboard
+   dataset_folder = "" # standalone
+
+
+   # load( "adm1.africa.s"  )
+   load( paste0( dataset_folder, "adm1.africa.s") )
+   
    adm.map = adm1.africa.s
 
 
    # adm0_rain = readRDS("arc_adm0_rainfall.rds")
-   adm1_rain = readRDS("arc_adm1_rainfall.rds")
+   
+   # adm1_rain = readRDS("arc_adm1_rainfall.rds")
+   
+   adm1_rain = readRDS( paste0( dataset_folder, "arc_adm1_rainfall.rds") )
+   
    # adm2_rain = readRDS("arc_adm2_rainfall.rds")
 
 
@@ -57,15 +70,20 @@ library(webshot)
 
       # country.iso3  = countrycode( country, "country.name", "iso3c")
 
-      fillCol(  height = 600 , flex = c(NA, 1),
-
+      fillCol(
+         height = "100%" ,
+                flex = c(NA, 2, 1, 1),
+      fluidPage(
                 fluidRow(
                    column(4 ,
 
                              selectInput( ns("var"), "Variable",
                                           choices = vars,
-                                          selected = "mean_rain"
-                             )
+                                          selected = "rain_mean"
+                             ) 
+                          # ,
+                          #     
+                          #     checkboxInput( ns("lines"), "Monthly lines")
                           )
                              ,
                    column( 8 ,
@@ -78,18 +96,24 @@ library(webshot)
                                  max = max(adm1_rain$date) ,
                                  step = 30 ,
                                  timeFormat = "%Y-%m",
-                                 animate = animationOptions(interval = 1500)
+                                 animate = animationOptions(interval = 1000)
                               )
 
                       )
-                ),
+                   )
+                ) ,
+                
+            leafletOutput( ns('mymap'), height = "100%", width = "100%") 
+            ,
 
+            plotOutput( ns("year_histo"), height = "100%", width = "100%" )
+            ,
 
-                  leafletOutput( ns('mymap'), height = "100%")
-
+            plotOutput( ns("month_histo"), height = "100%", width = "100%"
+                        # , hover = hoverOpts(id =ns("plot_hover")) 
+            # plotly::plotlyOutput( ns("month_histo"), height = "100%", width = "100%"
+                        )
       )
-
-
 }
 
 
@@ -263,7 +287,7 @@ library(webshot)
 
            req( country() )
 
-           leaflet() %>%
+           leaflet( data = dpoly() ) %>%
               addProviderTiles( leaflet_style , group = 'background map'
                                 ) %>%
               # addPolygons(
@@ -280,7 +304,8 @@ library(webshot)
                  options = layersControlOptions(collapsed = TRUE)
               )  %>%
               
-              addPolygons( data = dpoly() ,
+              addPolygons( 
+                           # data = dpoly() ,
                            group = "monthly rainfall (mm)" ,
                            label = labels(),
                            popup = popup() ,
@@ -312,7 +337,116 @@ library(webshot)
 
 
            })
+        
+        # HISTO VIS ####
+        
+        # histo_detail <- function(x){
+        #    
+        #    if(is.null(x)) return(NULL)
+        #    paste( x[1,1], " - ", x[1,2])
+        #    # row_id = row_idx <- which(
+        #    #                          tr2r()$year == x[1,1] &
+        #    #                          tr2r()$month == round(x[1,2]) + 1
+        #    #                          )
+        #    # 
+        #    # data <- tr2r()[ row_id, ] %>% filter( year %in% input$year) 
+        #    # 
+        #    # paste0("<b>", data[,"year"], "</b><br>",
+        #    #           format(data[,"rain"], digits = 2), " mm<br>",
+        #    #           "Previous year: ", format(data[,"prev.year"], digits = 2), " mm<br>",
+        #    #           "<b>% of previous year: ", percent(data[,"year.change"]), "</b><br>",
+        #    #           "Baseline, 2000-2006: ", format(data[,"base.rain"], digits = 2), " mm<br>",
+        #    #           "<b>% of baseline: ", percent(data[,"base.change"]), "</b>"
+        #    # )
+        # }  
+        
+        output$year_histo = renderPlot({
+           
+           # country
+           if ( country() %in% 'Africa'){
+              
+              data =  dataset
+              
+           } else {
+              
+              # data =  dataset[ selected_country_iso3, ]
+              data =  dataset[ selected_country_iso3(), ] 
+           }
 
+           data  %>%
+              
+              group_by( year ) %>%
+              summarise(
+                 rain_total = sum( rain_total, na.rm = TRUE),
+                 rain_observations = sum( rain_observations, na.rm = TRUE)
+              ) %>%
+              mutate(
+                 rain = ifelse( rain_observations > 0 , rain_total / rain_observations, 0),
+                 selected = ifelse( year %in% year( input$date_range ) , 1, 0)
+                 # selected = ifelse( year %in% year( "2017-1-1") , 1, 0)
+              ) %>%
+              group_by( selected ) %>%
+              
+              ggplot( aes( year, rain ) ) +
+              geom_col( aes( fill = selected ) ) +
+              # geom_line( color = "black" , alpha = .35 ) +
+              # geom_lollipop( aes( color = selected ) , size = 1 ) +
+              guides(fill = FALSE, color = FALSE, size = FALSE) +
+              labs( x = "Year", title = "Yearly" )
+           
+        })
+
+  
+        # output$month_histo = plotly::renderPlotly({
+        output$month_histo = renderPlot({
+
+           # country
+           if ( country() %in% 'Africa'){
+
+              data =  dataset
+
+           } else {
+
+              # data =  dataset[ selected_country_iso3, ]
+              data =  dataset[ selected_country_iso3(), ] 
+           }
+
+           d = data %>%
+              group_by( year, month ) %>%
+              summarise(
+                 rain_total = sum( rain_total, na.rm = TRUE),
+                 rain_observations = sum( rain_observations, na.rm = TRUE)
+              ) %>%
+              mutate(
+                 rain = ifelse( rain_observations >0, rain_total / rain_observations , 0),
+                 month_selected = ifelse( month %in% month( input$date_range ) , 1, 0) ,
+                 year_selected = ifelse( year %in% year( input$date_range ) , 1, 0)
+              ) %>% ungroup()
+           
+           plot = 
+
+              ggplot( d, aes( factor(month), rain ) ) +
+              guides(fill = FALSE, color = FALSE, alpha = FALSE ) +
+              # scale_x_discrete( labels = format("%m") ) +
+              labs( x = "Month", title = "Monthly" )
+           
+           # if ( input$lines ){
+              plot  = plot + 
+                  geom_line( aes( color = year_selected , 
+                                 alpha = year_selected , 
+                                 group = year )
+                            # , alpha = .35 
+                            ) +
+                 geom_point( aes( color = month_selected  
+                                  , alpha = year_selected ) )
+           # } else {
+           #    plot  = plot + geom_col( aes( fill = month_selected ) ) 
+           # }
+
+         plot
+         # plotly::ggplotly( plot ) 
+        })
+ 
 }
 
 
